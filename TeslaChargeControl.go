@@ -14,6 +14,7 @@ import (
 	"flag"
 	"fmt"
 	"github.com/brutella/can"
+	_ "github.com/go-sql-driver/mysql"
 	"github.com/goburrow/serial"
 	"github.com/golang/glog"
 	"github.com/gorilla/mux"
@@ -22,9 +23,9 @@ import (
 	"net/http"
 	"os"
 	"time"
-
-	_ "github.com/go-sql-driver/mysql"
 )
+
+// Version 2 makes parameters editable via the WEB interface
 
 var (
 	address          string
