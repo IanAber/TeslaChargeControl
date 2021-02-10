@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project version="4">
+  <component name="SshConfigs">
+    <configs>
+      <sshConfig authType="PASSWORD" host="aberhome1.local" id="e00f4180-3c55-434a-99f4-8dfdfb4d56ad" port="22" customName="aberhome1" nameFormat="CUSTOM" username="pi" />
+      <sshConfig host="aberhome.local" id="58426fb4-d2fd-4317-892f-5626a207ccd5" keyPath="$USER_HOME$/.ssh/id_rsa" port="22" customName="AberHome" nameFormat="CUSTOM" username="pi" />
+    </configs>
+  </component>
+</project>

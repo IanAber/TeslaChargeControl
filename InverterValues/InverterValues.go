@@ -1,6 +1,8 @@
 package InverterValues
 
 import (
+	"SystemController/quinticFunction"
+	"github.com/golang/glog"
 	"strconv"
 	"sync"
 )
@@ -44,7 +46,19 @@ type InverterValues struct {
 	Current        bool
 	FeedSelfC      bool
 	Esave          bool
-	mu             sync.Mutex
+
+	vBattMin   float32
+	vBattMax   float32
+	vBattDelta float32
+	qf         quinticFunction.QuinticFunction
+
+	mu sync.Mutex
+
+	Log bool
+}
+
+func (i *InverterValues) LoadFunctionConstants(filename string) error {
+	return i.qf.LoadConstants(filename)
 }
 
 func (i *InverterValues) GetVolts() float32 {
@@ -165,6 +179,55 @@ func (i *InverterValues) SetSOC(soc float32) {
 	i.mu.Lock()
 	defer i.mu.Unlock()
 	i.soc = soc
+}
+
+func (i *InverterValues) GetQuinticFunction() quinticFunction.QuinticFunction {
+	return i.qf
+}
+
+// Return -1 if we need more power to charge
+// Return 0 if we are inside the band of acceptable Delta V
+// Return +1 if we can take more power for something else
+func (i *InverterValues) GetChargeLevel() int {
+	i.vBattMax, i.vBattMin = i.qf.Eval(i.soc)
+	i.vBattDelta = i.vsetpoint - i.volts
+	switch {
+	case (i.frequency > 61) && (i.amps < 0):
+		if i.Log {
+			glog.Infof("(i.frequency(%f) > 61Hz) && (i.amps(%f) < 0) - Raise consumption", i.frequency, i.amps)
+			glog.Flush()
+		}
+		return 1 // Inverters are throttled and battery is charging
+	case (i.frequency < 59.5) && (i.amps > 0):
+		if i.Log {
+			glog.Infof("(i.frequency(%f) < 59.5Hz) && (i.amps(%f) > 0) - Lower consumption", i.frequency, i.amps)
+			glog.Flush()
+		}
+		return -1 // Inverters are all running and battery is discharging
+	case (i.vBattDelta > i.vBattMax) && (i.frequency < 61) && (i.amps > -60):
+		if i.Log {
+			glog.Infof("(i.vBattDelta(%f) > i.vBattMax(%f)) && (i.frequency(%f) < 60.25) - Lower consumption", i.vBattDelta, i.vBattMax, i.frequency)
+			glog.Flush()
+		}
+		return -1 // Battery voltage is below the acceptable setpoint and the inverters
+		// are not throttled and charge current is less than 60Amps
+	case ((i.vBattDelta < i.vBattMin) || (i.amps < -80)):
+		if i.Log {
+			glog.Infof("(i.vBattDelta(%f) < i.vBattMin(%f)) - Raise consumption", i.vBattDelta, i.vBattMin)
+			glog.Flush()
+		}
+		return 1 // Battery voltage is above the acceptable setpoint or we are charging at more than 80 amps
+	default:
+		return 0
+	}
+}
+
+func (i *InverterValues) GetVBattDeltaMax() float32 {
+	return i.vBattMax
+}
+
+func (i *InverterValues) GetVBattDeltaMin() float32 {
+	return i.vBattMin
 }
 
 func (i *InverterValues) SetSetPoint(setPoint float32) {

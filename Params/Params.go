@@ -1,6 +1,7 @@
 package Params
 
 import (
+	"log"
 	"sync"
 	"time"
 )
@@ -43,10 +44,11 @@ func (p *Params) SetCurrent(i float32) {
 
 func (p *Params) SetMaxAmps(i float32) {
 	if i > p.systemMax {
-		i = 48
+		i = p.systemMax
 	} else if i < 0 {
 		i = 0
 	}
+	//	fmt.Println("Setting maximum Tesla current to ", i)
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	p.maxAmps = i
@@ -58,7 +60,7 @@ func (p *Params) Reset() {
 	p.mu.Unlock()
 	p.maxAmps = 10.0
 	p.lastChange = time.Now()
-	p.systemMax = 48.0
+	p.systemMax = 47.0
 }
 
 /// Change the charging current. Return true if it was changed or false if we
@@ -73,9 +75,9 @@ func (p *Params) ChangeCurrent(delta int16) bool {
 			// We are already at the system maximum so do nothing
 			return false
 		}
-		// Give it at least 15 seconds between increases but pretend we did push it up.
-		if p.lastChange.Add(time.Second * 15).Before(time.Now()) {
-			// If it has been a minute since the last increase then push up the charge current and reset the time
+		// Give it at least 5 seconds between increases but pretend we did push it up.
+		if p.lastChange.Add(time.Second * 5).Before(time.Now()) {
+			// If it has been 5 seconds since the last increase then push up the charge current and reset the time
 			p.maxAmps += float32(delta)
 			if p.maxAmps < minAmps {
 				p.maxAmps = minAmps
@@ -84,15 +86,13 @@ func (p *Params) ChangeCurrent(delta int16) bool {
 				// Don't go over the system maximum
 				p.maxAmps = p.systemMax
 			}
+			log.Println("Increasing Tesla current to", p.maxAmps, "Amps")
 			p.lastChange = time.Now()
 		}
 	} else {
 		if p.maxAmps == 0 {
 			// Already at 0 Amps so do nothing
 			return false
-		}
-		if p.maxAmps < 7 {
-
 		}
 		// Wait 15 seconds between each change going downward.
 		// Hold the current for 45 seconds if it would shut the car down to lower it further.
@@ -104,6 +104,7 @@ func (p *Params) ChangeCurrent(delta int16) bool {
 				// Don't let it go below 0 Amps
 				p.maxAmps = 0.0
 			}
+			log.Println("Decreasing Tesla current to", p.maxAmps, "Amps")
 			// Record the time
 			p.lastChange = time.Now()
 		}

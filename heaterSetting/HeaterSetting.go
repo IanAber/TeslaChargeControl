@@ -129,14 +129,14 @@ func (h *HeaterSetting) turnOnPump() {
 func (h *HeaterSetting) Increase(frequency float64) bool {
 	var setting = h.currentSetting
 	if setting < h.maxSetting {
-		if h.dontIncreaseBefore.After(time.Now()) {
+		if h.dontIncreaseBefore.After(time.Now()) { // If we just increased the setting and are waiting for the inverters to react hold off further increases
 			return true
 		}
 		h.SetHeater(setting + 1)
 		if frequency > 60.0 {
 			// Based on how high above 60Hz the frequency is we should hold this new level to let the string inverters
 			// ramp up. Hold for 15 seconds for each Hz over 60.
-			h.dontDecreaseBefore = time.Now().Add((time.Duration((frequency - 60.0) * float64(time.Second) * 5)))
+			h.dontDecreaseBefore = time.Now().Add((time.Duration((frequency - 60.0) * float64(time.Second) * 15)))
 		} else {
 			h.dontDecreaseBefore = time.Now()
 		}
