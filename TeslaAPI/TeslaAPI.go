@@ -2,15 +2,20 @@ package TeslaAPI
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"github.com/PuerkitoBio/goquery"
 	"golang.org/x/oauth2"
 	"io/ioutil"
 	"log"
+	"math/rand"
 	"net/http"
 	"net/smtp"
 	"net/url"
 	"os"
+	"strings"
 	"time"
 )
 
@@ -53,9 +58,10 @@ func New(verbose bool) (*TeslaAPI, error) {
 	if err == nil {
 		err = json.Unmarshal(bytes, &t.teslaToken)
 		if err == nil {
-			if t.teslaToken.AccessToken != "" {
+			if t.teslaToken.Valid() {
+				//			if t.teslaToken.AccessToken != "" {
 				t.teslaClient = t.oauthConfig.Client(t.ctx, t.teslaToken)
-				log.Println("TeslaAPI Expires in - ", t.teslaToken.Expiry)
+				log.Println("TeslaAPI Expires - ", t.teslaToken.Expiry)
 				err = t.GetVehicleId()
 				if err != nil {
 					err = fmt.Errorf("TeslaAPI failed to get the Tesla vehicle ID - %s", err.Error())
@@ -108,26 +114,48 @@ func (api *TeslaAPI) loginCompletePage() string {
 	return `<html><head><title>Tesla Login Success</title></head><body><h1>Tesla Login Successful</h1><br />The Tesla API keys have been retrieved and recorded.</body></html>`
 }
 
+func randomString(len int) string {
+
+	bytes := make([]byte, len)
+
+	for i := 0; i < len; i++ {
+		bytes[i] = byte(randInt(97, 122))
+	}
+
+	return string(bytes)
+}
+
+func randInt(min int, max int) int {
+
+	return min + rand.Intn(max-min)
+}
+
+func Base64Encode(src []byte) string {
+	return base64.RawURLEncoding.EncodeToString(src)
+}
+
 func (api *TeslaAPI) HandleTeslaLogin(w http.ResponseWriter, r *http.Request) {
 	// "access_token":"qts-2a42f25867b9b18b2104c89ae57ab85f53dec8433118e97f8de8e789016e7a01"
 	// "token_type":"bearer"
 	// "expires_in":3888000
 	// "refresh_token":"2ce3912596858fe28db4859b49a15c7b4441be61e515fe5703ca95f61090f4ce"
 	// "created_at":1606874992
-	var token struct {
-		AccessToken  string `json:"access_token"`
-		TokenType    string `json:"bearer"`
-		ExpiresIn    int64  `json:"expires_in"`
-		RefreshToken string `json:"refresh_token"`
-		CreatedAt    int64  `json:"created_at"`
-	}
+
+	//var token struct {
+	//	AccessToken  string `json:"access_token"`
+	//	TokenType    string `json:"bearer"`
+	//	ExpiresIn    int64  `json:"expires_in"`
+	//	RefreshToken string `json:"refresh_token"`
+	//	CreatedAt    int64  `json:"created_at"`
+	//}
+	var token oauth2.Token
+
 	loginFailureMessage := func(w http.ResponseWriter, err error) {
 		_, err = fmt.Fprint(w, `<html><head><title>Tesla API Login Failure</title><head><body>`, err, `</body></html>`)
 		if err != nil {
 			log.Println(err)
 		}
 	}
-	fmt.Println("HandleTeslaLogin")
 	err := r.ParseForm()
 	if err != nil {
 		log.Println(err)
@@ -138,42 +166,161 @@ func (api *TeslaAPI) HandleTeslaLogin(w http.ResponseWriter, r *http.Request) {
 		fmt.Println("Email = ", email)
 		fmt.Println("Password = ", password)
 	}
-	fmt.Println("Send to tesla...")
-	response, err := http.PostForm("https://owner-api.teslamotors.com/oauth/token", url.Values{"client_id": {"81527cff06843c8634fdc09e8ac0abefb46ac849f38fe1e431c2ef2106796384"},
-		"client_secret": {"c7257eb71a564034f9419ee651c7d0e5f7aa6bfbd18bafb5c5c033b093bb2fa3"},
-		"grant_type":    {"password"},
-		"email":         {email},
-		"password":      {password}})
+
+	rand.Seed(time.Now().UTC().UnixNano())
+	codeVerifier := randomString(86)
+	hash := sha256.Sum256([]byte(codeVerifier))
+	codeChallenge := Base64Encode(hash[:])
+	state := randomString(10)
+	strUri := fmt.Sprintf("https://auth.tesla.com/oauth2/v3/authorize?client_id=ownerapi&code_challenge=%s&code_challenge_method=S256&redirect_uri=https://auth.tesla.com/void/callback&response_type=code&scope=openid%%20emai%%20offline_access&state=%s&login_hint=tesla@cedartechnology.com",
+		codeChallenge, state)
+	getResponse, err := http.Get(strUri)
+	defer func() {
+		err := getResponse.Body.Close()
+		if err != nil {
+			log.Println(err)
+		}
+	}()
+	if err != nil {
+		loginFailureMessage(w, err)
+		return
+	}
+	if getResponse.StatusCode != 200 {
+		body, err2 := ioutil.ReadAll(getResponse.Body)
+		if err2 != nil {
+			loginFailureMessage(w, err2)
+			return
+		}
+
+		loginFailureMessage(w, fmt.Errorf("Tesla login page returned %s\n", string(body)))
+		return
+	}
+
+	var sessionCookie *http.Cookie
+	for _, cookie := range getResponse.Cookies() {
+		log.Println("Cookie - ", cookie.Name, " : ", cookie.Value)
+		if cookie.Name == "tesla-auth.sid" {
+			sessionCookie = cookie
+		}
+	}
+	if sessionCookie == nil {
+		loginFailureMessage(w, fmt.Errorf("TeslaAPI The session cookie was missing"))
+		return
+	} else {
+		log.Println("Cookie = ", sessionCookie)
+	}
+
+	strUri = fmt.Sprintf("https://auth.tesla.com/oauth2/v3/authorize?client_id=ownerapi&code_challenge=%s&code_challenge_method=S256&"+
+		"redirect_uri=https://auth.tesla.com/void/callback&"+
+		"response_type=code&"+
+		"scope=openid%%20email%%20offline_access&"+
+		"state=%s",
+		codeChallenge, state)
+	form := url.Values{"identity": {email},
+		"credential": {password}}
+	// Load the HTML document
+	doc, err := goquery.NewDocumentFromReader(getResponse.Body)
 
 	if err != nil {
 		loginFailureMessage(w, err)
 		return
 	}
+
+	doc.Find("input").Each(func(i int, s *goquery.Selection) {
+		// For each item found, get the band and title
+
+		inputName, foundName := s.Attr("name")
+		inputValue, _ := s.Attr("value")
+		inputType, foundType := s.Attr("type")
+		if foundType && foundName && (inputType == "hidden") {
+			form.Add(inputName, inputValue)
+		}
+	})
+
+	//	http.SetCookie(w, sessionCookie)
+	log.Println("Sending login form.")
+
+	request, err := http.NewRequest("POST", strUri, strings.NewReader(form.Encode()))
+	if err != nil {
+		loginFailureMessage(w, err)
+		return
+	}
+	request.AddCookie(sessionCookie)
+	request.Header.Add("content-type", "application/x-www-form-urlencoded")
+
+	// Need to do a RoundTrip so we don't automatically redirect. We should get 302 status
+	response, err := http.DefaultTransport.RoundTrip(request)
 	defer func() {
 		err := response.Body.Close()
 		if err != nil {
-			log.Println(err)
+			loginFailureMessage(w, err)
+			return
 		}
 	}()
+
+	if err != nil {
+		loginFailureMessage(w, err)
+		return
+	}
+
+	if response.StatusCode != 302 {
+		loginFailureMessage(w, fmt.Errorf(" Tesla login returned %d - %s", response.StatusCode, response.Status))
+		return
+	}
+
+	locationUri, err := response.Location()
+	if err != nil {
+		loginFailureMessage(w, err)
+		return
+	}
+
+	authorisationCode := locationUri.Query().Get("code")
+	strUri = "https://auth.tesla.com/oauth2/v3/token"
+	var requestParams struct {
+		GrantType    string `json:"grant_type"`
+		ClientID     string `json:"client_id"`
+		Code         string `json:"code"`
+		CodeVerifier string `json:"code_verifier"`
+		RedirectUri  string `json:"redirect_uri"`
+	}
+
+	requestParams.GrantType = "authorization_code"
+	requestParams.ClientID = "ownerapi"
+	requestParams.Code = authorisationCode
+	requestParams.CodeVerifier = codeVerifier
+	requestParams.RedirectUri = "https://auth.tesla.com/void/callback"
+
+	requestBody, err := json.Marshal(requestParams)
+	if err != nil {
+		loginFailureMessage(w, err)
+		return
+	}
+
+	response, err = http.Post(strUri, "application/json", strings.NewReader(string(requestBody)))
+	if err != nil {
+		loginFailureMessage(w, err)
+		return
+	}
 	body, err := ioutil.ReadAll(response.Body)
 	if err != nil {
 		loginFailureMessage(w, err)
 		return
 	}
-	fmt.Print("Unmarshalling... ", string(body))
+
+	//	log.Println("TeslaAPI response. Unmarshalling... ", string(body))
 	err = json.Unmarshal(body, &token)
-	api.teslaToken.AccessToken = token.AccessToken
-	api.teslaToken.RefreshToken = token.RefreshToken
-	api.teslaToken.TokenType = token.TokenType
-	api.teslaToken.Expiry = time.Unix(token.CreatedAt, 0).Add(time.Second * time.Duration(token.ExpiresIn))
 	if err != nil {
-		log.Println(body)
 		loginFailureMessage(w, err)
 		return
 	}
-	newToken, err := json.Marshal(api.teslaToken)
-	if err != nil {
-		log.Println(err)
+	api.teslaToken.AccessToken = token.AccessToken
+	api.teslaToken.RefreshToken = token.RefreshToken
+	api.teslaToken.TokenType = token.TokenType
+	api.teslaToken.Expiry = token.Expiry
+
+	newToken, err2 := json.Marshal(api.teslaToken)
+	if err2 != nil {
+		log.Println(err2)
 	} else {
 		err = ioutil.WriteFile(APIKeyFile, newToken, os.ModePerm)
 		if err != nil {
@@ -192,6 +339,7 @@ func (api *TeslaAPI) HandleTeslaLogin(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		log.Println(err)
 	}
+
 }
 
 func (api *TeslaAPI) postCarCommand(sCommand string) ([]byte, error) {
