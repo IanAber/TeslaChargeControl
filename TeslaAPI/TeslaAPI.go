@@ -19,11 +19,43 @@ import (
 	"time"
 )
 
+const APIClientID = "81527cff06843c8634fdc09e8ac0abefb46ac849f38fe1e431c2ef2106796384"
+const APIClientSecret = "c7257eb71a564034f9419ee651c7d0e5f7aa6bfbd18bafb5c5c033b093bb2fa3"
+const APIClientRedirect = "https://auth.tesla.com/void/callback"
+const APIAuthorizeURL = "https://auth.tesla.com/oauth2/v3/authorize"
+const APIExchangeURL = "https://auth.tesla.com/oauth2/v3/token"
+const APITokenURL = "https://owner-api.teslamotors.com/oauth/token"
+const APIScope = "openid email offline_access"
 const APIKeyFile = "/var/TeslaAPIKeys.txt"
 const EPVehicles = "https://owner-api.teslamotors.com/api/1/vehicles"
 const EPWakeUp = EPVehicles + "/%d/wake_up"
 const EPStartCharging = EPVehicles + "/%d/command/charge_start"
 const EPStopCharging = EPVehicles + "/%d/command/charge_stop"
+
+type TokenExchangeParams struct {
+	GrantType    string `json:"grant_type"`
+	ClientID     string `json:"client_id"`
+	ClientSecret string `json:"client_secret"`
+}
+
+type TokenRequestParams struct {
+	GrantType    string `json:"grant_type"`
+	ClientID     string `json:"client_id"`
+	Code         string `json:"code"`
+	CodeVerifier string `json:"code_verifier"`
+	RedirectUri  string `json:"redirect_uri"`
+	Scope        string `json:"scope"`
+}
+
+type TokenRead struct {
+	AccessToken  string `json:"access_token"`
+	RefreshToken string `json:"refresh_token"`
+	IDToken      string `json:"id_token"`
+	ExpiresIn    int    `json:"expires_in"`
+	State        string `json:"state"`
+	TokenType    string `json:"token_type"`
+	CreatedAt    int64  `json:"created_at"`
+}
 
 type vehicle struct {
 	Id          uint64 `json:"id"`
@@ -135,22 +167,10 @@ func Base64Encode(src []byte) string {
 }
 
 func (api *TeslaAPI) HandleTeslaLogin(w http.ResponseWriter, r *http.Request) {
-	// "access_token":"qts-2a42f25867b9b18b2104c89ae57ab85f53dec8433118e97f8de8e789016e7a01"
-	// "token_type":"bearer"
-	// "expires_in":3888000
-	// "refresh_token":"2ce3912596858fe28db4859b49a15c7b4441be61e515fe5703ca95f61090f4ce"
-	// "created_at":1606874992
-
-	//var token struct {
-	//	AccessToken  string `json:"access_token"`
-	//	TokenType    string `json:"bearer"`
-	//	ExpiresIn    int64  `json:"expires_in"`
-	//	RefreshToken string `json:"refresh_token"`
-	//	CreatedAt    int64  `json:"created_at"`
-	//}
-	var token oauth2.Token
+	var QueryParams url.Values = make(url.Values)
 
 	loginFailureMessage := func(w http.ResponseWriter, err error) {
+		log.Println(err)
 		_, err = fmt.Fprint(w, `<html><head><title>Tesla API Login Failure</title><head><body>`, err, `</body></html>`)
 		if err != nil {
 			log.Println(err)
@@ -167,14 +187,25 @@ func (api *TeslaAPI) HandleTeslaLogin(w http.ResponseWriter, r *http.Request) {
 		fmt.Println("Password = ", password)
 	}
 
+	// Start by getting the login page.
+
 	rand.Seed(time.Now().UTC().UnixNano())
 	codeVerifier := randomString(86)
 	hash := sha256.Sum256([]byte(codeVerifier))
 	codeChallenge := Base64Encode(hash[:])
 	state := randomString(10)
-	strUri := fmt.Sprintf("https://auth.tesla.com/oauth2/v3/authorize?client_id=ownerapi&code_challenge=%s&code_challenge_method=S256&redirect_uri=https://auth.tesla.com/void/callback&response_type=code&scope=openid%%20emai%%20offline_access&state=%s&login_hint=tesla@cedartechnology.com",
-		codeChallenge, state)
-	getResponse, err := http.Get(strUri)
+
+	QueryParams.Add("client_id", "ownerapi")
+	QueryParams.Add("code_challenge", codeChallenge)
+	QueryParams.Add("code_challenge_method", "S256")
+	QueryParams.Add("redirect_uri", APIClientRedirect)
+	QueryParams.Add("response_type", "code")
+	QueryParams.Add("scope", APIScope)
+	QueryParams.Add("state", state)
+	QueryParams.Add("login_hint", "tesla@cedartechnology.com")
+	strParams := QueryParams.Encode()
+
+	getResponse, err := http.Get(APIAuthorizeURL + "?" + strParams)
 	defer func() {
 		err := getResponse.Body.Close()
 		if err != nil {
@@ -198,7 +229,6 @@ func (api *TeslaAPI) HandleTeslaLogin(w http.ResponseWriter, r *http.Request) {
 
 	var sessionCookie *http.Cookie
 	for _, cookie := range getResponse.Cookies() {
-		log.Println("Cookie - ", cookie.Name, " : ", cookie.Value)
 		if cookie.Name == "tesla-auth.sid" {
 			sessionCookie = cookie
 		}
@@ -206,18 +236,19 @@ func (api *TeslaAPI) HandleTeslaLogin(w http.ResponseWriter, r *http.Request) {
 	if sessionCookie == nil {
 		loginFailureMessage(w, fmt.Errorf("TeslaAPI The session cookie was missing"))
 		return
-	} else {
-		log.Println("Cookie = ", sessionCookie)
 	}
+	QueryParams = make(url.Values)
+	QueryParams.Set("client_id", "ownerapi")
+	QueryParams.Add("code_challenge", codeChallenge)
+	QueryParams.Add("code_challenge_method", "S256")
+	QueryParams.Add("redirect_uri", APIClientRedirect)
+	QueryParams.Add("response_type", "code")
+	QueryParams.Add("scope", APIScope)
+	QueryParams.Add("state", state)
 
-	strUri = fmt.Sprintf("https://auth.tesla.com/oauth2/v3/authorize?client_id=ownerapi&code_challenge=%s&code_challenge_method=S256&"+
-		"redirect_uri=https://auth.tesla.com/void/callback&"+
-		"response_type=code&"+
-		"scope=openid%%20email%%20offline_access&"+
-		"state=%s",
-		codeChallenge, state)
 	form := url.Values{"identity": {email},
 		"credential": {password}}
+
 	// Load the HTML document
 	doc, err := goquery.NewDocumentFromReader(getResponse.Body)
 
@@ -227,7 +258,7 @@ func (api *TeslaAPI) HandleTeslaLogin(w http.ResponseWriter, r *http.Request) {
 	}
 
 	doc.Find("input").Each(func(i int, s *goquery.Selection) {
-		// For each item found, get the band and title
+		// For each hidden input field found add it to the form
 
 		inputName, foundName := s.Attr("name")
 		inputValue, _ := s.Attr("value")
@@ -237,10 +268,10 @@ func (api *TeslaAPI) HandleTeslaLogin(w http.ResponseWriter, r *http.Request) {
 		}
 	})
 
-	//	http.SetCookie(w, sessionCookie)
+	// Post the login form
 	log.Println("Sending login form.")
 
-	request, err := http.NewRequest("POST", strUri, strings.NewReader(form.Encode()))
+	request, err := http.NewRequest("POST", APIAuthorizeURL+"?"+QueryParams.Encode(), strings.NewReader(form.Encode()))
 	if err != nil {
 		loginFailureMessage(w, err)
 		return
@@ -268,6 +299,7 @@ func (api *TeslaAPI) HandleTeslaLogin(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Authorisation code is embedded in the redirect link returned.
 	locationUri, err := response.Location()
 	if err != nil {
 		loginFailureMessage(w, err)
@@ -275,28 +307,31 @@ func (api *TeslaAPI) HandleTeslaLogin(w http.ResponseWriter, r *http.Request) {
 	}
 
 	authorisationCode := locationUri.Query().Get("code")
-	strUri = "https://auth.tesla.com/oauth2/v3/token"
-	var requestParams struct {
-		GrantType    string `json:"grant_type"`
-		ClientID     string `json:"client_id"`
-		Code         string `json:"code"`
-		CodeVerifier string `json:"code_verifier"`
-		RedirectUri  string `json:"redirect_uri"`
+
+	var requestParams TokenRequestParams = TokenRequestParams{
+		GrantType:    "authorization_code",
+		ClientID:     "ownerapi",
+		Code:         authorisationCode,
+		CodeVerifier: codeVerifier,
+		RedirectUri:  APIClientRedirect,
+		Scope:        APIScope,
 	}
 
 	requestParams.GrantType = "authorization_code"
 	requestParams.ClientID = "ownerapi"
 	requestParams.Code = authorisationCode
 	requestParams.CodeVerifier = codeVerifier
-	requestParams.RedirectUri = "https://auth.tesla.com/void/callback"
+	requestParams.RedirectUri = APIClientRedirect
 
+	// Body should contain the request parameters in application/json format
 	requestBody, err := json.Marshal(requestParams)
 	if err != nil {
 		loginFailureMessage(w, err)
 		return
 	}
+	log.Println(string(requestBody))
 
-	response, err = http.Post(strUri, "application/json", strings.NewReader(string(requestBody)))
+	response, err = http.Post(APIExchangeURL, "application/json", strings.NewReader(string(requestBody)))
 	if err != nil {
 		loginFailureMessage(w, err)
 		return
@@ -306,17 +341,68 @@ func (api *TeslaAPI) HandleTeslaLogin(w http.ResponseWriter, r *http.Request) {
 		loginFailureMessage(w, err)
 		return
 	}
+	if response.StatusCode != 200 {
+		log.Println("Status = ", response.Status)
+	}
 
-	//	log.Println("TeslaAPI response. Unmarshalling... ", string(body))
-	err = json.Unmarshal(body, &token)
+	var tokenRead TokenRead
+	err = json.Unmarshal(body, &tokenRead)
 	if err != nil {
 		loginFailureMessage(w, err)
 		return
 	}
-	api.teslaToken.AccessToken = token.AccessToken
-	api.teslaToken.RefreshToken = token.RefreshToken
-	api.teslaToken.TokenType = token.TokenType
-	api.teslaToken.Expiry = token.Expiry
+
+	// Now we need to exchange the bearer token for an access token
+
+	var tokenExchangeParams TokenExchangeParams = TokenExchangeParams{"urn:ietf:params:oauth:grant-type:jwt-bearer", APIClientID, APIClientSecret}
+	tokenExchangeParams.GrantType = "urn:ietf:params:oauth:grant-type:jwt-bearer"
+	tokenExchangeParams.ClientID = APIClientID
+	tokenExchangeParams.ClientSecret = APIClientSecret
+	requestBody, err = json.Marshal(tokenExchangeParams)
+
+	tokenRequest, err := http.NewRequest("POST", APITokenURL, strings.NewReader(string(requestBody)))
+	if err != nil {
+		loginFailureMessage(w, err)
+		return
+	}
+
+	tokenRequest.Header.Add("Content-Type", "application/json")
+	tokenRequest.Header.Add("Authorization", "Bearer "+tokenRead.AccessToken)
+
+	response, err = http.DefaultClient.Do(tokenRequest)
+	if err != nil {
+		loginFailureMessage(w, err)
+		return
+	}
+
+	body, err = ioutil.ReadAll(response.Body)
+	if err != nil {
+		loginFailureMessage(w, err)
+		return
+	}
+	if response.StatusCode != 200 {
+		loginFailureMessage(w, fmt.Errorf("Status returned when fetching a token = %s\n %s ", response.Status, tokenRequest.Header.Get("Authorization")))
+		_, err = fmt.Fprint(w, string(body), "\n\n")
+		if err != nil {
+			log.Println(err)
+		}
+		_, err = fmt.Fprint(w, string(requestBody))
+		if err != nil {
+			log.Println(err)
+		}
+		return
+	}
+
+	err = json.Unmarshal(body, &tokenRead)
+	if err != nil {
+		loginFailureMessage(w, err)
+		return
+	}
+
+	api.teslaToken.AccessToken = tokenRead.AccessToken
+	api.teslaToken.RefreshToken = tokenRead.RefreshToken
+	api.teslaToken.TokenType = tokenRead.TokenType
+	api.teslaToken.Expiry = time.Unix(tokenRead.CreatedAt, 0).Add(time.Second * time.Duration(tokenRead.ExpiresIn))
 
 	newToken, err2 := json.Marshal(api.teslaToken)
 	if err2 != nil {
@@ -325,11 +411,11 @@ func (api *TeslaAPI) HandleTeslaLogin(w http.ResponseWriter, r *http.Request) {
 		err = ioutil.WriteFile(APIKeyFile, newToken, os.ModePerm)
 		if err != nil {
 			log.Println(err)
-		} else {
-			log.Println("TeslaAPI wrote to key file : ", string(newToken))
 		}
 	}
+
 	api.teslaClient = api.oauthConfig.Client(api.ctx, api.teslaToken)
+
 	err = api.GetVehicleId()
 	if err != nil {
 		_, err = fmt.Fprint(w, `<html><head><title>Tesla Credentials Updated</title></head><body><h1>The Tesla API credentials have been updated.</h1><br>Error retrieving the Vehicle ID : `, err.Error(), `</body></html>`)
