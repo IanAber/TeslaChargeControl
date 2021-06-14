@@ -211,7 +211,7 @@ func (i *InverterValues) GetChargeLevel() int {
 		}
 		return -1 // Battery voltage is below the acceptable setpoint and the inverters
 		// are not throttled and charge current is less than 60Amps
-	case ((i.vBattDelta < i.vBattMin) || (i.amps < -80)):
+	case (i.vBattDelta < i.vBattMin) || (i.amps < -80):
 		if i.Log {
 			glog.Infof("(i.vBattDelta(%f) < i.vBattMin(%f)) - Raise consumption", i.vBattDelta, i.vBattMin)
 			glog.Flush()

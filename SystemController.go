@@ -134,7 +134,7 @@ func divideMaxAmpsAmongstSlaves(slaves []twcSlave.Slave, maxAmps uint16) {
 		if slaves[i].RequestCharge() {
 			slaves[i].SetCurrent(maxAmps)
 		} else {
-			slaves[i].SetCurrent(1000)
+			slaves[i].SetCurrent(2500)
 		}
 	}
 }
@@ -471,7 +471,7 @@ Every 6 hours we should hit the Tesla API to keep our token valid.
 func teslaKeepAlive() {
 	var err error
 
-	keepAliveTicker := time.NewTicker(120 * time.Minute)
+	keepAliveTicker := time.NewTicker(24 * time.Hour)
 
 	for {
 		select {
@@ -548,7 +548,8 @@ func calculatePowerAvailable() {
 		} else if powerState == 1 { // If the delta is less then the minimum we can take more power
 			if carCurrent > 1 {
 				// Car is charging so try and increase the charge rate
-				delta = 1
+				delta = 0 - int16(int(iValues.GetAmps())/5)
+				//				delta = 1
 				if !TeslaParameters.ChangeCurrent(delta) {
 					// Charge rate increase was not accepted so turn up the auxiliary heater
 					Heater.Increase(iValues.GetFrequency())
@@ -557,9 +558,8 @@ func calculatePowerAvailable() {
 					Heater.Decrease(true)
 				}
 			} else {
-				// No car charging requested so set the available current to 10.0 amps and turn up the auxiliary heater
-				//				fmt.Println("Set car current to 10A and increase heater")
-				TeslaParameters.SetMaxAmps(10.0)
+				// No car charging requested so set the available current to 25.0 amps and turn up the auxiliary heater
+				TeslaParameters.SetMaxAmps(25.0)
 				Heater.Increase(iValues.GetFrequency())
 			}
 		} else if powerState == -1 { // If the delta is more than the max we need to reduce the load to give the battery chance to charge up
@@ -571,6 +571,8 @@ func calculatePowerAvailable() {
 						// If the state of charge is 95% or more don't let the car current fall below 8 amps
 						if (soc < 95.0) || (carCurrent > 8) {
 							switch {
+							case iValues.GetAmps() > 35:
+								TeslaParameters.ChangeCurrent(0 - int16(iValues.GetAmps()/7))
 							case carCurrent > 30.0:
 								TeslaParameters.ChangeCurrent(-3)
 							case carCurrent > 20.0:
@@ -583,7 +585,7 @@ func calculatePowerAvailable() {
 				}
 			}
 		}
-		time.Sleep(time.Second * 5)
+		time.Sleep(time.Second * 15)
 	}
 }
 
