@@ -72,21 +72,20 @@ const (
 	MasterLimitChargeCurrent
 )
 
-/*
-const (
-	SlaveReady = iota // May NOT be plugged in
-	SlaveCharging
-	SlaveLostComms
-	SlaveDoNotCharge
-	SlaveReadyToCharge
-	SlaveBusy
-	SlaveLoweringPower
-	SlaveRaisingPower
-	SlaveStartingToCharge
-	SlaveLimitingPower
-	SlaveAdjustmentPeriodComplete
-)
-*/
+// New /*
+// const (
+//	SlaveReady = iota // May NOT be plugged in
+//	SlaveCharging
+//	SlaveLostComms
+//	SlaveDoNotCharge
+//	SlaveReadyToCharge
+//	SlaveBusy
+//	SlaveLoweringPower
+//	SlaveRaisingPower
+//	SlaveStartingToCharge
+//	SlaveLimitingPower
+//	SlaveAdjustmentPeriodComplete
+//)
 func New(address uint16, verbose bool, port serial.Port) Slave {
 	s := Slave{address, 0.0, 0.0, 0.0, 0, time.Now(), verbose,
 		port, time.Now(), 0, time.Unix(0, 0), true, false}
@@ -138,6 +137,7 @@ func (slave *Slave) GetStatus() string {
 	return fmt.Sprintf("Unknown Status [%d]", slave.status)
 }
 
+// SetCurrent /*
 // Set the allowed current for this slave.
 func (slave *Slave) SetCurrent(newValue uint16) {
 	if (slave.allowedValue < newValue) && (slave.allowedValue < 1600) && (newValue < 1600) {
@@ -184,8 +184,13 @@ func (slave *Slave) SendMasterHeartbeat(masterAddress uint16, api *TeslaAPI.Tesl
 			if slave.stopped {
 				if time.Since(slave.timeSetTo0Amps) > time.Minute {
 					if !api.APIDisabled {
-						log.Println("Stopping Tesla charging. current is shown as ", slave.current)
-						go api.StopCharging()
+						log.Println("Stopping Tesla charging. current is shown as ", float32(slave.current)/100)
+						go func() {
+							err := api.StopCharging()
+							if err != nil {
+								log.Println(err)
+							}
+						}()
 					} else {
 						slave.disabled = true
 					}
@@ -204,7 +209,12 @@ func (slave *Slave) SendMasterHeartbeat(masterAddress uint16, api *TeslaAPI.Tesl
 				slave.disabled = false
 				if time.Since(slave.timeSetTo0Amps) > time.Minute {
 					if !api.APIDisabled {
-						go api.StartCharging()
+						go func() {
+							err := api.StartCharging()
+							if err != nil {
+								log.Println("Failed to call StartCharging in the Tesla API.", err)
+							}
+						}()
 					} else {
 						slave.disabled = true
 					}
@@ -238,15 +248,20 @@ func (slave *Slave) SendMasterHeartbeat(masterAddress uint16, api *TeslaAPI.Tesl
 			if slave.timeSetTo0Amps == time.Unix(0, 0) {
 				slave.timeSetTo0Amps = time.Now()
 			} else if slave.current > 20 {
-				// If we set the amps to 0 more than 1 minute ago and we are still at zero then use the API to stop the car charging.
-				if (time.Since(slave.timeSetTo0Amps) > time.Minute) && !slave.stopped {
+				// If we set the amps to 0 more than 1 minute ago and we are still charging then use the API to stop the car charging.
+				if (time.Since(slave.timeSetTo0Amps) > time.Minute) && (slave.current > 50) && !api.IsHoldoff() {
 					log.Println("Turn off the car. this.current = ", slave.current)
 					if slave.current > 50 {
 						log.Println("Sending STOP via the Tesla API.")
 						if time.Since(slave.timeSetTo0Amps) > time.Minute {
 							if !api.APIDisabled {
-								log.Println("Stopping Tesla charging. current is shown as ", slave.current)
-								go api.StopCharging()
+								log.Println("Stopping Tesla charging. current is shown as ", float64(slave.current))
+								go func() {
+									err := api.StopCharging()
+									if err != nil {
+										log.Println(err)
+									}
+								}()
 								slave.stopped = true
 							} else {
 								slave.disabled = true

@@ -8,9 +8,7 @@ import (
 
 const minAmps = 5.0
 
-/**
-Structure to hold the charging parameters.
-*/
+// Params /**
 type Params struct {
 	current    float32   // Current being drawn
 	maxAmps    float32   // Maximum amps the car is allowed to draw
@@ -19,27 +17,22 @@ type Params struct {
 	mu         sync.Mutex
 }
 
-/**
-Return the maximum charging current allowed
-*/
+// GetMaxAmps Return the maximum charging current allowed /**
 func (p *Params) GetMaxAmps() float32 {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	return p.maxAmps
 }
 
-/**
-Return the actual charging current
-*/
+// GetCurrent /**
 func (p *Params) GetCurrent() float32 {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	return p.current
 }
 
-/**
-Return the actual and the maximum allowed charging currents.
-*/
+// GetValues /**
+// Return the actual and the maximum allowed charging currents.
 func (p *Params) GetValues() (current float32, maxAmps float32) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
@@ -48,18 +41,16 @@ func (p *Params) GetValues() (current float32, maxAmps float32) {
 	return current, maxAmps
 }
 
-/**
-Set the actual charging current as read fromt he Tesla charger
-*/
+// SetCurrent /**
+// Set the actual charging current as read fromt he Tesla charger
 func (p *Params) SetCurrent(i float32) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	p.current = i
 }
 
-/**
-Set the maximum allowed current that the car can have.
-*/
+// SetMaxAmps /**
+// Set the maximum allowed current that the car can have.
 func (p *Params) SetMaxAmps(i float32) {
 	// Limit to no more than the system maximum and no less than zero
 	if i > p.systemMax {
@@ -73,9 +64,7 @@ func (p *Params) SetMaxAmps(i float32) {
 	p.lastChange = time.Now()
 }
 
-/**
-Reset the settings
-*/
+// Reset /**
 func (p *Params) Reset() {
 	p.mu.Lock()
 	p.mu.Unlock()
@@ -84,10 +73,9 @@ func (p *Params) Reset() {
 	p.systemMax = 47.9 // This is the highest current we can supply to the car.
 }
 
-/**
-Change the charging current. Return true if it was changed or false if we
-are already at maximum or minimum so no change was made
-*/
+// ChangeCurrent /**
+// Change the charging current. Return true if it was changed or false
+// if we are already at maximum or minimum so no change was made
 func (p *Params) ChangeCurrent(delta int16) bool {
 	p.mu.Lock()
 	defer p.mu.Unlock()

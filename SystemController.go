@@ -22,12 +22,13 @@ import (
 	"github.com/gorilla/mux"
 	"log"
 	"net/http"
-	"net/smtp"
 	"os"
 	"time"
 )
 
 // Version 2 makes parameters editable via the WEB interface
+
+const CHARGINGLINKS = `<a href="/startCharging">Start Charging</a><br><a href="/stopCharging">Stop Charging</a>`
 
 var (
 	address          string
@@ -125,9 +126,15 @@ func divideMaxAmpsAmongstSlaves(slaves []twcSlave.Slave, maxAmps uint16) {
 	if activeCars > 0 {
 		maxAmps = maxAmps / activeCars
 	}
+	// Tesla can only accept charging currents from 5 amps upwards. We are trying to set a current of less
+	// than 6 amps fix it to 5 amps unless the battery state of charge is less than 85%
 	// If we end up with less than 5 amps for each car, stop charging until we have more available
 	if maxAmps < 500 {
-		maxAmps = 0
+		if iValues.GetSOC() > 85 {
+			maxAmps = 500
+		} else {
+			maxAmps = 0
+		}
 	}
 	// Share out the current amongst the cars waiting to charge or actively charging
 	for i := range slaves {
@@ -139,18 +146,69 @@ func divideMaxAmpsAmongstSlaves(slaves []twcSlave.Slave, maxAmps uint16) {
 	}
 }
 
+func mailForm(w http.ResponseWriter, r *http.Request) {
+	if r.Method != "POST" {
+		_, err := fmt.Fprintf(w, `<html><head><title>Email Tester</title></head><body>`)
+		if err != nil {
+			log.Println(err)
+		}
+	}
+	_, err := fmt.Fprintf(w, `<br/>Send email to Ian@CedarTechnology.com<br/>
+			<form action="/mail" method="post">
+				<label for="subject">Subject :</label><input name="subject" id="subject" value="%s" style="width:300px;border:solid 1px" /><br/>
+				<label for="body">Body :</label><textarea name="body" id="body" rows="25" cols="80">%s</textarea><br />
+				<input type="submit" value="Send">
+			</form>
+		</body>
+	</html>`, r.Form.Get("subject"), r.Form.Get("body"))
+	if err != nil {
+		log.Println(err)
+	}
+}
+
+func sendMail(w http.ResponseWriter, r *http.Request) {
+	if API == nil {
+		log.Println("Cannot send mail. Tesla API is null.")
+	}
+	err := r.ParseForm()
+	if err != nil {
+		_, errFmt := fmt.Fprintf(w, err.Error())
+		if errFmt != nil {
+			log.Println(errFmt)
+		}
+		return
+	}
+	log.Println("Sending mail to ian.")
+	err = API.SendMail(r.Form.Get("subject"), r.Form.Get("body"))
+	if err != nil {
+		_, errFmt := fmt.Fprintf(w, "<html><head><title>Send Email Error</title></head><body><h1>%s</h1><br/>", err.Error())
+		if errFmt != nil {
+			log.Println(errFmt)
+		}
+	} else {
+		_, errFmt := fmt.Fprintf(w, "<html><head><title>Sent</title></head><body><h1>Message Sent!</h1><br/")
+		if errFmt != nil {
+			log.Println(errFmt)
+		}
+	}
+	mailForm(w, r)
+}
+
 func ServeHandleTeslaLogin(w http.ResponseWriter, r *http.Request) {
 	if API == nil {
-		fmt.Println("API is nil")
+		log.Println("API is nil")
 	}
 	API.HandleTeslaLogin(w, r)
 }
 
 func ServeShowLoginPage(w http.ResponseWriter, r *http.Request) {
 	if API == nil {
-		fmt.Println("API is nil")
+		_, errFmt := fmt.Println("API is nil")
+		if errFmt != nil {
+			log.Println(errFmt)
+		}
 	}
-	API.ShowLoginPage(w, r)
+	API.ShowloginPage(w, r)
 }
 
 func setUpWebSite() {
@@ -165,7 +223,46 @@ func setUpWebSite() {
 	router.HandleFunc("/enableLogging", enableLogging).Methods("GET")
 	router.HandleFunc("/disableLogging", disableLogging).Methods("GET")
 	router.HandleFunc("/waterTemps", getWaterTemps).Methods("GET")
+	router.HandleFunc("/mail", sendMail).Methods("POST")
+	router.HandleFunc("/mail", mailForm).Methods("GET")
+	router.HandleFunc("/captcha", handleCaptcha)
+	router.HandleFunc("/startCharging", handleStartCharging)
+	router.HandleFunc("/stopCharging", handleStopCharging)
 	log.Fatal(http.ListenAndServe(":8080", router))
+}
+
+func handleCaptcha(w http.ResponseWriter, r *http.Request) {
+	API.HandleTeslaLogin(w, r)
+}
+
+func handleStartCharging(w http.ResponseWriter, _ *http.Request) {
+	err := API.StartCharging()
+	if err == nil {
+		_, errFmt := fmt.Fprint(w, "<html><head><title>Tesla Control</title></head><body><h1>Charging started</h1>", CHARGINGLINKS, "</body></html>")
+		if errFmt != nil {
+			log.Println(errFmt)
+		}
+	} else {
+		_, errFmt := fmt.Fprint(w, "<html><head><title>Tesla Control</title></head><body><h1>Charging failed to start</h1><br />", err.Error(), "<br />", CHARGINGLINKS, "</body></html>")
+		if errFmt != nil {
+			log.Println(errFmt)
+		}
+	}
+}
+
+func handleStopCharging(w http.ResponseWriter, _ *http.Request) {
+	err := API.StopCharging()
+	if err == nil {
+		_, errFmt := fmt.Fprint(w, "<html><head><title>Tesla Control</title></head><body><h1>Charging stopped</h1>", CHARGINGLINKS, "</body></html>")
+		if errFmt != nil {
+			log.Println(errFmt)
+		}
+	} else {
+		_, errFmt := fmt.Fprint(w, "<html><head><title>Tesla Control</title></head><body><h1>Charging failed to stop</h1><br />", err.Error(), "<br />", CHARGINGLINKS, "</body></html>")
+		if errFmt != nil {
+			log.Println(errFmt)
+		}
+	}
 }
 
 func getWaterTemps(w http.ResponseWriter, _ *http.Request) {
@@ -248,6 +345,8 @@ func getVersion(w http.ResponseWriter, _ *http.Request) {
 	}
 }
 
+// getValues /*
+// Return a set of values as a JSON object for consumption by a WEB page dashboard.
 func getValues(w http.ResponseWriter, _ *http.Request) {
 	_, fMaxAmps := TeslaParameters.GetValues()
 	var sPump string
@@ -320,12 +419,12 @@ func handleCANFrame(frm can.Frame) {
 	case 0x307: // Relays and status
 		c307 := CAN_307.New(frm.Data[0:])
 		iValues.GnRun = c307.GnRun()
-		iValues.OnRelay1 = c307.Relay1_Master()
-		iValues.OnRelay2 = c307.Relay2_Master()
-		iValues.OnRelay1Slave1 = c307.Relay1_Slave1()
-		iValues.OnRelay2Slave1 = c307.Relay2_Slave1()
-		iValues.OnRelay1Slave2 = c307.Relay1_Slave2()
-		iValues.OnRelay2Slave2 = c307.Relay2_Slave2()
+		iValues.OnRelay1 = c307.Relay1Master()
+		iValues.OnRelay2 = c307.Relay2Master()
+		iValues.OnRelay1Slave1 = c307.Relay1Slave1()
+		iValues.OnRelay2Slave1 = c307.Relay2Slave1()
+		iValues.OnRelay1Slave2 = c307.Relay1Slave2()
+		iValues.OnRelay2Slave2 = c307.Relay2Slave2()
 		iValues.GnRun = c307.GnRun()
 		iValues.GnRunSlave1 = c307.GnRunSlave1()
 		iValues.GnRunSlave2 = c307.GnRunSlave2()
@@ -426,7 +525,7 @@ func init() {
 
 	fmt.Println("Verbose = ", verbose)
 
-	// Set up the API WEB Site
+	// Set up the API WEBSite
 	go setUpWebSite()
 
 	config := serial.Config{
@@ -454,58 +553,41 @@ func init() {
 		log.Println("Connected to the database")
 	}
 
-	API, err = TeslaAPI.New(verbose)
+	API, err = TeslaAPI.New()
 	if err != nil {
 		log.Println(err)
 	} else {
 		log.Println("Tesla API setup and ready.")
 	}
 
-	// Start handling incoming CAN messages
+	log.SetFlags(log.Lshortfile | log.Ldate | log.Ltime)
+
+	// Start handling incoming CAN bus messages
 	go processCANFrames()
 }
 
-/**
-Every 6 hours we should hit the Tesla API to keep our token valid.
-*/
+// Ping the API for the vehicle ID every 2 hours. This should update the token as required
 func teslaKeepAlive() {
-	var err error
-
-	keepAliveTicker := time.NewTicker(24 * time.Hour)
-
 	for {
-		select {
-		case <-keepAliveTicker.C:
-			log.Println("TeslaAPI - Keep Alive")
-			reportAPIError := func() {
+		if API.IsConfigured() {
+			err := API.GetVehicleId()
+			if err != nil {
 				log.Println(err)
-				err2 := smtp.SendMail("mail.cedartechnology.com:587",
-					smtp.PlainAuth("", "pi@cedartechnology.com", "7444561", "mail.cedartechnology.com"),
-					"pi@cedartechnology.com", []string{"ian.abercrombie@cedartechnology.com"}, []byte("From: Aberhome1\r\nTo: Ian.Abercrombie@CedarTechnology.com\r\nSubject: Tesla Keep Alive Failed!\r\n\r\n"+err.Error()))
-				if err2 != nil {
-					log.Println("Failed to send email about the error above. ", err2)
-				}
-			}
-
-			if API == nil {
-				API, err = TeslaAPI.New(verbose)
-				if err != nil {
-					log.Println("teslaKeepAlive - failed to create a new API object")
-					reportAPIError()
-				}
-			}
-			if API != nil {
-				err = API.GetVehicleId()
-				if err != nil {
-					log.Println("teslaKeepAlive - Failed to get the vehicle id.")
-					reportAPIError()
-					API, err = TeslaAPI.New(verbose)
-					if err != nil {
-						reportAPIError()
-					}
-				}
 			}
 		}
+		time.Sleep(time.Hour * 2)
+	}
+}
+
+// Make sure the heater is turned down if we are discharging
+func killHeaterOnDischarge() {
+	for {
+		// If discharging at more than 1 amp then decrease the heater if it is on
+		// This makes recovery from discharge quite fast.
+		if (iValues.GetAmps() > 1) && (Heater.GetSetting() > 0) {
+			Heater.Decrease(true)
+		}
+		time.Sleep(time.Second)
 	}
 }
 
@@ -535,17 +617,17 @@ func calculatePowerAvailable() {
 
 		//		fmt.Printf ("F = %0.2fHz : Cars = %0.2fA : available = %0.2fA : SOC = %0.2f%%: setpoint = %0.2fV : vBatt = %0.2fV", frequency, carCurrent, TeslaParameters.GetMaxAmps(), soc, vSetpoint, vBatt)
 
-		if (carCurrent > 6) && (Heater.GetSetting() > 0) {
-			// If the car is trying to charge and the heater is on, turn the heater off
-			Heater.SetHeater(0)
-		}
+		//		if (carCurrent > 5) && (Heater.GetSetting() > 0) && powerState < 0 {
+		//			// If the car is trying to charge and the heater is on and we need more power, turn the heater off
+		//			Heater.SetHeater(0)
+		//		}
 		if iValues.AutoGn {
 			// If the generator is running turn off the Tesla and the auxiliary heater
 			TeslaParameters.SetMaxAmps(0)
 			if Heater.GetSetting() > 0 {
 				Heater.SetHeater(0)
 			}
-		} else if powerState == 1 { // If the delta is less then the minimum we can take more power
+		} else if powerState == 1 { // If the delta is less than the minimum we can take more power
 			if carCurrent > 1 {
 				// Car is charging so try and increase the charge rate
 				delta = 0 - int16(int(iValues.GetAmps())/5)
@@ -554,7 +636,7 @@ func calculatePowerAvailable() {
 					// Charge rate increase was not accepted so turn up the auxiliary heater
 					Heater.Increase(iValues.GetFrequency())
 				} else {
-					// Tesla accepted the increase so we should drop the heater a bit ignoring hold time setting
+					// Tesla accepted the increase, so we should drop the heater a bit ignoring hold time setting
 					Heater.Decrease(true)
 				}
 			} else {
@@ -705,6 +787,9 @@ func main() {
 
 	// Start the power management loop
 	go calculatePowerAvailable()
+
+	// Start the heater kill loop to ensure the heater is not drawing from the battery.
+	go killHeaterOnDischarge()
 
 	go logToDatabase()
 

@@ -13,11 +13,11 @@ import (
 *
 * Pin	Function
 *-------------------
-*  0	Fan
+*  0	Fan							(17)
 *  1	PWM output for Solar Pump
-*  2	AC enable
+*  2	AC enable					(27)
 *  3	6kW heater element (high)
-*  4	Pump Enable
+*  4	Pump Enable					(23)
 *  5	2.5kW heater element (med)
 ****************************************************************************************/
 
@@ -51,6 +51,7 @@ func New() *HeaterSetting {
 	return h
 }
 
+// SetHeater /*
 // Set the heater power.
 func (h *HeaterSetting) SetHeater(setting uint8) {
 	h.mu.Lock()
@@ -136,7 +137,7 @@ func (h *HeaterSetting) Increase(frequency float64) bool {
 		if frequency > 60.0 {
 			// Based on how high above 60Hz the frequency is we should hold this new level to let the string inverters
 			// ramp up. Hold for 15 seconds for each Hz over 60.
-			h.dontDecreaseBefore = time.Now().Add((time.Duration((frequency - 60.0) * float64(time.Second) * 15)))
+			h.dontDecreaseBefore = time.Now().Add(time.Duration((frequency - 60.0) * float64(time.Second) * 15))
 		} else {
 			h.dontDecreaseBefore = time.Now()
 		}
@@ -147,6 +148,7 @@ func (h *HeaterSetting) Increase(frequency float64) bool {
 	}
 }
 
+// Decrease /*
 // Drop the heater current. Return true if we dropped it or false if we are already fully off
 // ignoreTime tells us not to wait for the string inverters. This is used if we are dropping the
 // heater because we are ramping up the car.

@@ -2,7 +2,7 @@ package InverterValues
 
 import (
 	"SystemController/quinticFunction"
-	"github.com/golang/glog"
+	"log"
 	"strconv"
 	"sync"
 )
@@ -185,6 +185,8 @@ func (i *InverterValues) GetQuinticFunction() quinticFunction.QuinticFunction {
 	return i.qf
 }
 
+// GetChargeLevel */
+// determine if we can raise or should lower consumption to adjust the available charge current
 // Return -1 if we need more power to charge
 // Return 0 if we are inside the band of acceptable Delta V
 // Return +1 if we can take more power for something else
@@ -194,29 +196,25 @@ func (i *InverterValues) GetChargeLevel() int {
 	switch {
 	case (i.frequency > 61) && (i.amps < 0):
 		if i.Log {
-			glog.Infof("(i.frequency(%f) > 61Hz) && (i.amps(%f) < 0) - Raise consumption", i.frequency, i.amps)
-			glog.Flush()
+			log.Printf("(i.frequency(%f) > 61Hz) && (i.amps(%f) < 0) - Raise consumption\n", i.frequency, i.amps)
 		}
 		return 1 // Inverters are throttled and battery is charging
 	case (i.frequency < 59.5) && (i.amps > 0):
 		if i.Log {
-			glog.Infof("(i.frequency(%f) < 59.5Hz) && (i.amps(%f) > 0) - Lower consumption", i.frequency, i.amps)
-			glog.Flush()
+			log.Printf("(i.frequency(%f) < 59.5Hz) && (i.amps(%f) > 0) - Lower consumption\n", i.frequency, i.amps)
 		}
 		return -1 // Inverters are all running and battery is discharging
 	case (i.vBattDelta > i.vBattMax) && (i.frequency < 61) && (i.amps > -60):
 		if i.Log {
-			glog.Infof("(i.vBattDelta(%f) > i.vBattMax(%f)) && (i.frequency(%f) < 60.25) - Lower consumption", i.vBattDelta, i.vBattMax, i.frequency)
-			glog.Flush()
+			log.Printf("(i.vBattDelta(%f) > i.vBattMax(%f)) && (i.frequency(%f) < 60.25) - Lower consumption\n", i.vBattDelta, i.vBattMax, i.frequency)
 		}
 		return -1 // Battery voltage is below the acceptable setpoint and the inverters
 		// are not throttled and charge current is less than 60Amps
 	case (i.vBattDelta < i.vBattMin) || (i.amps < -80):
 		if i.Log {
-			glog.Infof("(i.vBattDelta(%f) < i.vBattMin(%f)) - Raise consumption", i.vBattDelta, i.vBattMin)
-			glog.Flush()
+			log.Printf("(i.vBattDelta(%f) < i.vBattMin(%f)) - Raise consumption\n", i.vBattDelta, i.vBattMin)
 		}
-		return 1 // Battery voltage is above the acceptable setpoint or we are charging at more than 80 amps
+		return 1 // Battery voltage is above the acceptable setpoint, or we are charging at more than 80 amps
 	default:
 		return 0
 	}
