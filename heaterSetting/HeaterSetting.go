@@ -21,7 +21,8 @@ import (
 *  5	2.5kW heater element (med)
 ****************************************************************************************/
 
-const pump = 23 // Pump is on GPIO 4
+const pump = 23        // Pump is on GPIO 4
+const maxHotTemp = 920 // Maximum hot tank temperature in 10ths of a degree Celcius
 
 // Array of heater SSR port pins in order of least powerful to most powerful
 var heaters = [...]uint8{6, 24, 22}
@@ -63,7 +64,7 @@ func (h *HeaterSetting) SetHeater(setting uint8) {
 	}
 
 	// Overheating prevention
-	if h.hotTankTemp > 950 {
+	if h.hotTankTemp > maxHotTemp {
 		setting = 0
 	}
 
@@ -212,7 +213,7 @@ func (h *HeaterSetting) GetHotTankTemp() int16 {
 
 func (h *HeaterSetting) SetHotTankTemp(t int16) {
 	h.hotTankTemp = t
-	if t > 950 {
+	if t > maxHotTemp {
 		h.SetHeater(0)
 	}
 }

@@ -182,7 +182,7 @@ func (slave *Slave) SendMasterHeartbeat(masterAddress uint16, api *TeslaAPI.Tesl
 	if slave.allowedValue == 0 {
 		if slave.current > 20 {
 			if slave.stopped {
-				if time.Since(slave.timeSetTo0Amps) > time.Minute {
+				if time.Since(slave.timeSetTo0Amps) > (time.Minute * 4) {
 					if !api.APIDisabled {
 						log.Println("Stopping Tesla charging. current is shown as ", float32(slave.current)/100)
 						go func() {
@@ -207,7 +207,7 @@ func (slave *Slave) SendMasterHeartbeat(masterAddress uint16, api *TeslaAPI.Tesl
 		if slave.allowedValue >= 600 {
 			if slave.stopped {
 				slave.disabled = false
-				if time.Since(slave.timeSetTo0Amps) > time.Minute {
+				if time.Since(slave.timeSetTo0Amps) > (time.Minute * 4) {
 					if !api.APIDisabled {
 						go func() {
 							err := api.StartCharging()
@@ -249,11 +249,11 @@ func (slave *Slave) SendMasterHeartbeat(masterAddress uint16, api *TeslaAPI.Tesl
 				slave.timeSetTo0Amps = time.Now()
 			} else if slave.current > 20 {
 				// If we set the amps to 0 more than 1 minute ago and we are still charging then use the API to stop the car charging.
-				if (time.Since(slave.timeSetTo0Amps) > time.Minute) && (slave.current > 50) && !api.IsHoldoff() {
+				if (time.Since(slave.timeSetTo0Amps) > (4 * time.Minute)) && (slave.current > 50) && !api.IsHoldoff() {
 					log.Println("Turn off the car. this.current = ", slave.current)
 					if slave.current > 50 {
 						log.Println("Sending STOP via the Tesla API.")
-						if time.Since(slave.timeSetTo0Amps) > time.Minute {
+						if time.Since(slave.timeSetTo0Amps) > (time.Minute * 4) {
 							if !api.APIDisabled {
 								log.Println("Stopping Tesla charging. current is shown as ", float64(slave.current))
 								go func() {
@@ -270,7 +270,7 @@ func (slave *Slave) SendMasterHeartbeat(masterAddress uint16, api *TeslaAPI.Tesl
 					}
 				}
 				// If we set amps to 0 more than 5 minutes ago and we STILL have not stopped charging then stop the Tesla communications and send an email
-				if (time.Since(slave.timeSetTo0Amps) > time.Minute*5) && !slave.stopped {
+				if (time.Since(slave.timeSetTo0Amps) > (time.Minute * 5)) && !slave.stopped {
 					log.Println("Tried to stop the car from charging 5 minutes ago but it is still going.")
 					smtperr := smtp.SendMail("mail.cedartechnology.com:587",
 						smtp.PlainAuth("", "pi@cedartechnology.com", "7444561", "mail.cedartechnology.com"),

@@ -1,10 +1,6 @@
 package main
 
 import (
-	"CanMessages/CAN_010"
-	"CanMessages/CAN_305"
-	"CanMessages/CAN_306"
-	"CanMessages/CAN_307"
 	"SystemController/InverterValues"
 	"SystemController/Params"
 	"SystemController/TeslaAPI"
@@ -16,14 +12,21 @@ import (
 	"encoding/json"
 	"flag"
 	"fmt"
+	"github.com/IanAber/CanMessages/v2/Can010"
+	"github.com/IanAber/CanMessages/v2/Can305"
+	"github.com/IanAber/CanMessages/v2/Can306"
+	"github.com/IanAber/CanMessages/v2/Can307"
+	"log"
+	"net/http"
+	"os"
+	"path/filepath"
+	"runtime"
+	"time"
+
 	"github.com/brutella/can"
 	_ "github.com/go-sql-driver/mysql"
 	"github.com/goburrow/serial"
 	"github.com/gorilla/mux"
-	"log"
-	"net/http"
-	"os"
-	"time"
 )
 
 // Version 2 makes parameters editable via the WEB interface
@@ -194,28 +197,54 @@ func sendMail(w http.ResponseWriter, r *http.Request) {
 	mailForm(w, r)
 }
 
-func ServeHandleTeslaLogin(w http.ResponseWriter, r *http.Request) {
+func ServeSetTeslaTokens(w http.ResponseWriter, r *http.Request) {
 	if API == nil {
 		log.Println("API is nil")
 	}
-	API.HandleTeslaLogin(w, r)
+	API.HandleSetTeslaTokens(w, r)
 }
 
-func ServeShowLoginPage(w http.ResponseWriter, r *http.Request) {
+func ServeGetTeslaTokens(w http.ResponseWriter, r *http.Request) {
 	if API == nil {
 		_, errFmt := fmt.Println("API is nil")
 		if errFmt != nil {
 			log.Println(errFmt)
 		}
 	}
-	API.ShowloginPage(w, r)
+	API.ShowGetTokensPage(w, r)
+}
+
+type neuteredFileSystem struct {
+	fs http.FileSystem
+}
+
+func (nfs neuteredFileSystem) Open(path string) (http.File, error) {
+	f, err := nfs.fs.Open(path)
+	if err != nil {
+		return nil, err
+	}
+
+	s, err := f.Stat()
+	if s.IsDir() {
+		index := filepath.Join(path, "index.html")
+		if _, err := nfs.fs.Open(index); err != nil {
+			closeErr := f.Close()
+			if closeErr != nil {
+				return nil, closeErr
+			}
+
+			return nil, err
+		}
+	}
+
+	return f, nil
 }
 
 func setUpWebSite() {
 	router := mux.NewRouter().StrictSlash(true)
 	router.HandleFunc("/", getValues).Methods("GET")
-	router.HandleFunc("/TeslaLogin", ServeShowLoginPage).Methods("GET")
-	router.HandleFunc("/getTeslaKeys", ServeHandleTeslaLogin).Methods("POST")
+	router.HandleFunc("/getTeslaKeys", ServeGetTeslaTokens).Methods("GET")
+	router.HandleFunc("/setTeslaKeys", ServeSetTeslaTokens).Methods("POST")
 	router.HandleFunc("/disableHeater", disableHeater).Methods("GET")
 	router.HandleFunc("/enableHeater", enableHeater).Methods("GET")
 	router.HandleFunc("/reloadChargingFunction", reloadChargingFunction).Methods("GET")
@@ -225,14 +254,13 @@ func setUpWebSite() {
 	router.HandleFunc("/waterTemps", getWaterTemps).Methods("GET")
 	router.HandleFunc("/mail", sendMail).Methods("POST")
 	router.HandleFunc("/mail", mailForm).Methods("GET")
-	router.HandleFunc("/captcha", handleCaptcha)
 	router.HandleFunc("/startCharging", handleStartCharging)
 	router.HandleFunc("/stopCharging", handleStopCharging)
-	log.Fatal(http.ListenAndServe(":8080", router))
-}
 
-func handleCaptcha(w http.ResponseWriter, r *http.Request) {
-	API.HandleTeslaLogin(w, r)
+	fileServer := http.FileServer(neuteredFileSystem{http.Dir("./web")})
+	router.PathPrefix("/").Handler(http.StripPrefix("/", fileServer))
+
+	log.Fatal(http.ListenAndServe(":8080", router))
 }
 
 func handleStartCharging(w http.ResponseWriter, _ *http.Request) {
@@ -402,22 +430,22 @@ func getValues(w http.ResponseWriter, _ *http.Request) {
 func handleCANFrame(frm can.Frame) {
 	switch frm.ID {
 	case 0x305: // Battery voltage, current and state of charge
-		c305 := CAN_305.New(frm.Data[0:])
+		c305 := Can305.Can305{}.New(frm.Data[0:])
 
 		iValues.SetVolts(c305.VBatt())
 		iValues.SetAmps(c305.IBatt())
 		iValues.SetSOC(c305.SocBatt())
 
 	case 0x306: // Charge procedure, Operating state, Active error, Charge set point
-		c306 := CAN_306.New(frm.Data[0:])
+		c306 := Can306.Can306{}.New(frm.Data[0:])
 		iValues.SetSetPoint(c306.ChargeSetPoint())
 
 	case 0x010: // Frequency
-		c010 := CAN_010.New(frm.Data[0:])
+		c010 := Can010.Can010{}.New(frm.Data[0:])
 		iValues.SetFrequency(c010.Frequency())
 
 	case 0x307: // Relays and status
-		c307 := CAN_307.New(frm.Data[0:])
+		c307 := Can307.Can307{}.New(frm.Data[0:])
 		iValues.GnRun = c307.GnRun()
 		iValues.OnRelay1 = c307.Relay1Master()
 		iValues.OnRelay2 = c307.Relay2Master()
@@ -490,22 +518,12 @@ func connectToDatabase() (*sql.DB, error) {
 }
 
 func init() {
-	// Initialise the current values
-
-	TeslaParameters.Reset()
-	Heater = heaterSetting.New()
 
 	// Set up logging
 	//	logwriter, e := syslog.New(syslog.LOG_NOTICE, "myprog")
 	//	if e == nil {
 	//		log.SetOutput(logwriter)
 	//	}
-
-	// Set up the quintic function to control charging
-	err := iValues.LoadFunctionConstants("/var/www/html/params/charge_params.json")
-	if err != nil {
-		log.Fatal(err)
-	}
 
 	// Get the settings
 	flag.StringVar(&address, "teslaPort", "/dev/serial/by-path/platform-3f980000.usb-usb-0:1.2:1.0-port0", "Serial port address")
@@ -522,6 +540,16 @@ func init() {
 	flag.StringVar(&databasePort, "dbPort", "3306", "Database port")
 	flag.BoolVar(&verbose, "verbose", false, "Enable verbose mode to trace information to STDOUT.")
 	flag.Parse()
+	log.SetFlags(log.Lshortfile | log.LstdFlags)
+
+	// Initialise the current values
+	TeslaParameters.Reset()
+	Heater = heaterSetting.New()
+	// Set up the quintic function to control charging
+	err := iValues.LoadFunctionConstants("/var/www/html/params/charge_params.json")
+	if err != nil {
+		log.Fatal(err)
+	}
 
 	fmt.Println("Verbose = ", verbose)
 
@@ -568,9 +596,20 @@ func init() {
 
 // Ping the API for the vehicle ID every 2 hours. This should update the token as required
 func teslaKeepAlive() {
+	defer func() {
+		stackSlice := make([]byte, 512)
+		s := runtime.Stack(stackSlice, false)
+		log.Printf("\n%s", stackSlice[0:s])
+	}()
 	for {
 		if API.IsConfigured() {
 			err := API.GetVehicleId()
+			if err != nil {
+				log.Println(err)
+			}
+		} else {
+			log.Println("tesla keep alive - API is not configured")
+			err := API.SendMail("Keep Alive Failed", "Tesla Keep Alive Failed - Not Configured")
 			if err != nil {
 				log.Println(err)
 			}
@@ -618,7 +657,7 @@ func calculatePowerAvailable() {
 		//		fmt.Printf ("F = %0.2fHz : Cars = %0.2fA : available = %0.2fA : SOC = %0.2f%%: setpoint = %0.2fV : vBatt = %0.2fV", frequency, carCurrent, TeslaParameters.GetMaxAmps(), soc, vSetpoint, vBatt)
 
 		//		if (carCurrent > 5) && (Heater.GetSetting() > 0) && powerState < 0 {
-		//			// If the car is trying to charge and the heater is on and we need more power, turn the heater off
+		//			// If the car is trying to charge, and the heater is on, and we need more power, turn the heater off
 		//			Heater.SetHeater(0)
 		//		}
 		if iValues.AutoGn {

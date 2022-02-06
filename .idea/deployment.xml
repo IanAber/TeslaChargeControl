@@ -1,14 +1,7 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <project version="4">
-  <component name="PublishConfigData" autoUpload="Always" serverName="aberhome1" overwriteAll="false" autoUploadExternalChanges="true">
+  <component name="PublishConfigData" autoUpload="Always" overwriteAll="false" autoUploadExternalChanges="true">
     <serverData>
-      <paths name="AberHome">
-        <serverdata>
-          <mappings>
-            <mapping deploy="/src/SystemController" local="$PROJECT_DIR$" web="/" />
-          </mappings>
-        </serverdata>
-      </paths>
       <paths name="aberhome1">
         <serverdata>
           <mappings>

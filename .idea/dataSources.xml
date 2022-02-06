@@ -4,17 +4,14 @@
     <data-source source="LOCAL" name="Aberhome1" uuid="7496716d-2c75-4790-a1ea-cbb1db3d3815">
       <driver-ref>mysql.8</driver-ref>
       <synchronize>true</synchronize>
+      <auto-commit>false</auto-commit>
+      <schema-control>MANUAL</schema-control>
       <jdbc-driver>com.mysql.cj.jdbc.Driver</jdbc-driver>
       <jdbc-url>jdbc:mysql://192.168.10.5:3306/logging</jdbc-url>
       <driver-properties>
-        <property name="serverTimezone" value="EST" />
+        <property name="serverTimezone" />
       </driver-properties>
-    </data-source>
-    <data-source source="LOCAL" name="@localhost" uuid="b7f14512-871b-4813-a06e-950ee6ebf9c4">
-      <driver-ref>mysql.8</driver-ref>
-      <synchronize>true</synchronize>
-      <jdbc-driver>com.mysql.cj.jdbc.Driver</jdbc-driver>
-      <jdbc-url>jdbc:mysql://localhost:3306</jdbc-url>
+      <time-zone>EST5EDT</time-zone>
     </data-source>
   </component>
 </project>

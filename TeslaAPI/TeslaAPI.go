@@ -5,48 +5,31 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"golang.org/x/oauth2"
 	"io/ioutil"
 	"log"
 	"net/http"
 	"net/http/cookiejar"
 	"net/smtp"
-	"net/url"
 	"os"
 	"time"
-
-	"github.com/PuerkitoBio/goquery"
-	"golang.org/x/oauth2"
 )
 
-//const APICLIENTID = "81527cff06843c8634fdc09e8ac0abefb46ac849f38fe1e431c2ef2106796384"
-//const APICLIENTSECRET = "c7257eb71a564034f9419ee651c7d0e5f7aa6bfbd18bafb5c5c033b093bb2fa3"
-const APIAUTHSCHEME = "https"
-const APIAUTHHOST = "auth.tesla.com"
-const APIAUTHROOT = APIAUTHSCHEME + "://" + APIAUTHHOST
+//const APIAUTHSCHEME = "https"
+//const APIAUTHHOST = "auth.tesla.com"
 
-//const APIAUTHCLIENTREDIRECTPATH = "/void/callback"
-//const APIAUTHORIZEPATH = "/oauth2/v3/authorize"
-const APIAUTHCAPTCHAPATH = "/captcha"
+//const APIAUTHROOT = APIAUTHSCHEME + "://" + APIAUTHHOST
 
-//const APIMULTIFACTORPATH = "/oauth2/v3/authorize/mfa/factors"
-//const APIAUTHEXCHANGEPATH = "/oauth2/v3/token"
+//const APIAUTHCAPTCHAPATH = "/captcha"
 
-//const APIAUTHCLIENTREDIRECTURL = APIAUTHROOT + APIAUTHCLIENTREDIRECTPATH
-//const APIAUTHORIZEURL = APIAUTHROOT + APIAUTHORIZEPATH
-const APIAUTHCAPTCHAURL = APIAUTHROOT + APIAUTHCAPTCHAPATH
-
-//const APIMULTIFACTORURL = APIAUTHROOT + APIMULTIFACTORPATH
-//const APIAUTHEXCHANGEURL = APIAUTHROOT + APIAUTHEXCHANGEPATH
-//const APIAUTHSCOPE = "openid email offline_access"
+//const APIAUTHCAPTCHAURL = APIAUTHROOT + APIAUTHCAPTCHAPATH
 
 const APISCHEME = "https"
 const APIHOST = "owner-api.teslamotors.com"
 const APIROOT = APISCHEME + "://" + APIHOST
 
-//const APITOKENPATH = "/oauth/token"
 const APIEPVEHICLESPATH = "/api/1/vehicles"
 
-//const APITOKENURL = APIROOT + APITOKENPATH
 const APIEPVEHICLESURL = APIROOT + APIEPVEHICLESPATH
 const APIEPWAKEUP = APIEPVEHICLESURL + "/%d/wake_up"
 const APIEPSTARTCHARGING = APIEPVEHICLESURL + "/%d/command/charge_start"
@@ -111,47 +94,60 @@ type TeslaAPI struct {
 func New() (*TeslaAPI, error) {
 	t := new(TeslaAPI)
 	t.teslaToken = new(oauth2.Token)
+	t.ctx = context.Background()
 	bytes, err := ioutil.ReadFile(APIKEYFILE)
 	t.lastEmail = time.Date(2020, 1, 1, 0, 0, 0, 0, time.UTC)
 	jar, _ := cookiejar.New(nil)
 	t.client = http.Client{Jar: jar, Transport: &http.Transport{}}
-
-	fmt.Println("Setting up the Tesla API client.")
+	t.oauthConfig = &oauth2.Config{
+		ClientID:     "ownerapi",
+		ClientSecret: "some secret",
+		Endpoint: oauth2.Endpoint{
+			AuthURL:   "https://auth.tesla.com/oauth2/v3/authorize",
+			TokenURL:  "https://auth.tesla.com/oauth2/v3/token",
+			AuthStyle: 0,
+		},
+		RedirectURL: "https://auth.tesla.com/void/callback",
+		Scopes:      []string{"openid", "email", "offline_access"},
+	}
+	//	fmt.Println("Setting up the Tesla API client.")
 	if err == nil {
 		err = json.Unmarshal(bytes, &t.teslaToken)
 		if err == nil {
-			//			if t.teslaToken.AccessToken != "" {
-			if t.teslaToken.Valid() {
+
+			if t.teslaToken.AccessToken != "" {
+				t.teslaToken.Expiry = time.Now()
+				//			if t.teslaToken.Valid() {
 				t.teslaClient = t.oauthConfig.Client(t.ctx, t.teslaToken)
-				t.oauthConfig.Client(t.ctx, t.teslaToken)
-				fmt.Println("Getting the vehicle ID")
+				log.Println("Getting the vehicle ID")
 				err = t.GetVehicleId()
 				if err != nil {
 					err = fmt.Errorf("TeslaAPI failed to get the Tesla vehicle ID - %s", err.Error())
-					fmt.Println(err.Error())
+					log.Println(err.Error())
 				} else {
-					fmt.Println("TeslaAPI Expires - ", t.teslaToken.Expiry)
+					log.Println("TeslaAPI Expires - ", t.teslaToken.Expiry)
 				}
+
 			} else {
 				err = fmt.Errorf("AccessToken not found!--- %s", string(bytes))
-				fmt.Println(err.Error())
+				log.Println(err.Error())
 			}
 		}
 	} else {
-		fmt.Println("Error reading the API Key File - ", err.Error())
+		log.Println("Error reading the API Key File - ", err.Error())
 	}
 	return t, err
 }
 
 func (api *TeslaAPI) cancelCommandHoldoff() {
 	api.commandHoldOff = false
-	fmt.Println("TeslaAPI - Holdoff cancelled")
+	log.Println("TeslaAPI - Holdoff cancelled")
 }
 
 // SendMail
 // Send email to the administrator. Change the parameters for the email server etc. here.
 func (api *TeslaAPI) SendMail(subject string, body string) error {
-	fmt.Println("Sending mail to Ian : subject = ", subject, "\nbody : ", body)
+	//	fmt.Println("Sending mail to Ian : subject = ", subject, "\nbody : ", body)
 	err := smtp.SendMail("mail.cedartechnology.com:587",
 		smtp.PlainAuth("", "pi@cedartechnology.com", "7444561", "mail.cedartechnology.com"),
 		"pi@cedartechnology.com", []string{"ian.abercrombie@cedartechnology.com"}, []byte(`From: Aberhome1
@@ -161,873 +157,27 @@ Subject: `+subject+`
 	return err
 }
 
-//func (api *TeslaAPI) ShowloginPage(w http.ResponseWriter, _ *http.Request) {
-//	_, err := fmt.Fprint(w, `<html><head><title>Tesla API Login</title>
-//</head>
-//<body>
-//	<form action="/getTeslaKeys" method="POST">
-//		<label for="email">Email :</label><input id="email" type="text" name="identity" style="width:300px" value="Tesla@CedarTechnology.com" /><br>
-//		<label for="password">Password :</label><input id="password" type="password" name="credential" style="width:300px" value="" /><br>
-//		<button type="text" type="submit">log in to Tesla</button>
-//	</form>
-//</body>
-//</html>`)
-//	if err != nil {
-//		fmt.Println(err)
-//	}
-//}
-
-func (api *TeslaAPI) ShowloginPage(w http.ResponseWriter, _ *http.Request) {
+func (api *TeslaAPI) ShowGetTokensPage(w http.ResponseWriter, _ *http.Request) {
 	_, err := fmt.Fprint(w, `<html><head><title>Tesla API Keys</title>
 	</head>
 	<body>
-		<form action="/getTeslaKeys" method="POST">
-			<label for="access_key">Access Key :</label>
-			<input id="access_key" type="text" name="access_key" style="width:800px" value="" /><br>
-			<label for="refresh_key">Refresh Key :</label>
-			<input id="refresh_key" name="refresh_key" style="width:800px" value="" /><br>
+		<form action="/setTeslaKeys" method="POST">
+			<label for="refresh_token">Refresh Token :</label>
+			<input id="refresh_token" name="refresh_token" style="width:800px" value="" /><br>
+			<label for="access_token">Access Token :</label>
+			<input id="access_token" type="text" name="access_token" style="width:800px" value="" /><br>
 			<button type="text" type="submit">log in to Tesla</button>
 		</form>
 	</body>
 	</html>`)
 	if err != nil {
-		fmt.Println(err)
+		log.Println(err)
 	}
 }
 
 func (api *TeslaAPI) loginCompletePage() string {
 	return `<html><head><title>Tesla keys - Success</title></head><body><h1>Tesla login Successful</h1><br />The Tesla API keys have been retrieved and recorded.</body></html>`
 }
-
-//func randomString(len int) string {
-//
-//	bytes := make([]byte, len)
-//
-//	for i := 0; i < len; i++ {
-//		bytes[i] = byte(randInt(97, 122))
-//	}
-//
-//	return string(bytes)
-//}
-
-//func randInt(min int, max int) int {
-//
-//	return min + rand.Intn(max-min)
-//}
-
-//func Base64Encode(src []byte) string {
-//	return base64.RawURLEncoding.EncodeToString(src)
-//}
-
-//func getHiddenInputFields(doc *goquery.Document) url.Values {
-//	//	values := make(map[string][]string)
-//	values := url.Values{}
-//	doc.Find("#form").Find("input").Each(func(i int, s *goquery.Selection) {
-//		// For each hidden input field found add it to the form
-//
-//		inputName, foundName := s.Attr("name")
-//		inputValue, _ := s.Attr("value")
-//		inputType, foundType := s.Attr("type")
-//		if foundType && foundName && (inputType == "hidden") {
-//			values.Add(inputName, inputValue)
-//			log.Println("Hidden field %s = %s", inputName, inputValue)
-//		}
-//	})
-//
-//	return values
-//}
-
-func (api *TeslaAPI) CheckForCaptcha(w http.ResponseWriter, doc *goquery.Document, form url.Values) bool {
-	var hiddenFields = ""
-	if doc.Find("[name|='captcha']").Length() > 0 {
-		doc.Find("input").Each(func(i int, s *goquery.Selection) {
-			fieldName, _ := s.Attr("name")
-			fieldValue, _ := s.Attr("value")
-			if fieldName != "captcha" {
-				hiddenFields = hiddenFields + `<input type="hidden" name="` + fieldName
-				if fieldName != "cancel" {
-					if fieldName != "credential" {
-						hiddenFields = hiddenFields + `" value="` + fieldValue
-					} else {
-						hiddenFields = hiddenFields + `" value="` + form["credential"][0]
-					}
-				}
-				hiddenFields = hiddenFields + `" />`
-			}
-		})
-		if len(form["code_verifier"]) > 0 {
-			hiddenFields = hiddenFields + `<input type="hidden" name="code_verifier" value="` + form["code_verifier"][0] + `" />`
-		}
-		if len(form["state"]) > 0 {
-			hiddenFields = hiddenFields + `<input type="hidden" name="state" value="` + form["state"][0] + `" />`
-		}
-		captcha, err := api.client.Get(APIAUTHCAPTCHAURL)
-		if err != nil {
-			_, _ = fmt.Fprint(w, err.Error())
-			return false
-		}
-		graphic, err := ioutil.ReadAll(captcha.Body)
-		err = captcha.Body.Close()
-		if err != nil {
-			log.Println(err)
-		}
-		_, err = fmt.Fprint(w,
-			`<html>
-	<head>
-		<title>Captcha</title>
-	</head>
-	</body>`,
-			string(graphic),
-			`<br />Type in the charcters in the image<br />
-		<form method='POST' action='/captcha'>
-			<input type='text' name='captcha' /><br />
-			<input type='submit' value='Submit' />`,
-			hiddenFields,
-			`</form>
-	</body>
-</html>`)
-		if err != nil {
-			log.Println(err)
-		}
-		return true
-	} else {
-		return false
-	}
-}
-
-//func makeCodeChallenge(codeVerifier string) string {
-//	hash := sha256.Sum256([]byte(codeVerifier))
-//	return Base64Encode(hash[:])
-//}
-
-//func loginFailureMessageWithBody(w http.ResponseWriter, err error, body []byte) {
-//	fmt.Println(err)
-//	_, err = fmt.Fprint(w, `<html><head><title>Tesla API login Failure</title><head><body><h1>Error!</h1><br/><br/>`, html.EscapeString(err.Error()),
-//		`<br /><iframe width=100% src=data:text/html;charset=utf-8,`, url.PathEscape(string(body)), ` /></body></html>`)
-//	if err != nil {
-//		fmt.Println(err)
-//	}
-//}
-
-//func loginFailureMessage(w http.ResponseWriter, err error) {
-//	fmt.Println(err)
-//	_, err = fmt.Fprint(w, `<html><head><title>Tesla API login Failure</title><head><body><h1>Error!</h1><br/>`, err, `</body></html>`)
-//	if err != nil {
-//		fmt.Println(err)
-//	}
-//}
-
-//// Called when /getTeslaKeys is requested. Login ID and Password for Tesla are provided in the form data.
-//func (api *TeslaAPI) HandleTeslaLogin(w http.ResponseWriter, r *http.Request) {
-//	var QueryParams = make(url.Values)
-//	var getResponse *http.Response
-//
-//	rand.Seed(time.Now().UTC().UnixNano())	// Initialise the random number generator
-//	codeVerifier := randomString(86)	// Create a random string for the codeVerifier
-//	state := randomString(10)			// Create a random state string
-//
-//	err := r.ParseForm()					// Parse the form to get the login ID and password
-//	if err != nil {
-//		fmt.Println(err)
-//	}
-//	var captcha = ""
-//	email := r.Form["identity"][0]
-//	password := r.Form["credential"][0]
-//	if len(r.Form["captcha"]) != 0 {
-//		captcha = r.Form["captcha"][0]
-//		codeVerifier = r.Form["code_verifier"][0]
-//		state = r.Form["state"][0]
-//	}
-//	form := r.Form
-//
-//	// If no captcha, start by getting the login page.
-//	if len(captcha) == 0 {
-//		log.Println("No Captcha so getting login page")
-//		QueryParams.Add("client_id", "ownerapi")
-//		QueryParams.Add("code_challenge", makeCodeChallenge(codeVerifier))
-//		QueryParams.Add("code_challenge_method", "S256")
-//		QueryParams.Add("redirect_uri", APIAUTHCLIENTREDIRECTURL)
-//		QueryParams.Add("response_type", "code")
-//		QueryParams.Add("scope", APIAUTHSCOPE)
-//		QueryParams.Add("state", state)
-//		QueryParams.Add("login_hint", "tesla@cedartechnology.com")
-//		strParams := QueryParams.Encode()
-//
-//		// Need to trap any redirect.
-//		log.Println("Check redirect")
-//		api.client.CheckRedirect = func(req *http.Request, via []*http.Request) error {
-//			// Is this the expected redirect?
-//			log.Println("req.URL.Path = ", req.URL.Path)
-//			if req.URL.Path == APIAUTHCLIENTREDIRECTPATH {
-//				// Look for the code in the query parameters
-//				log.Println(req.URL)
-//				api.code = req.URL.Query().Get("code")
-//				if api.code != "" {
-//					// We got the code as part of the redirect, so we can stop here.
-//					// The page we are being sent to, does not exist any way.
-//					return http.ErrUseLastResponse
-//				}
-//				// If we didn't get the code we should let this fail by letting it go to the redirect URL
-//			}
-//			// If this wwas not the expected redirect to get the code then simply allow it to be followed
-//			if len(via) > 9 {
-//				// Maximum of 10 redirects allowed
-//				return errors.New("too many redirects")
-//			}
-//			return nil
-//		}
-//
-//		log.Println("Getting login page <", APIAUTHORIZEURL + "?" + strParams + ">")
-//		loginRequest, err := http.NewRequest("GET", APIAUTHORIZEURL + "?" + strParams, nil)
-//		loginRequest.Header.Add("authority", "auth.tesla.com")
-//		loginRequest.Header.Add("accept", "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.9")
-//		loginRequest.Header.Add("accept-encoding", "gzip, deflate, br")
-//		loginRequest.Header.Add("accept-language", "en-GB,en-US;q=0.9,en;q=0.8")
-//		loginRequest.Header.Add("upgrade-insecure-requests", "1")
-//		loginRequest.Header.Add("user-agent", "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/95.0.4638.69 Safari/537.36")
-//		loginRequest.Header.Add("sec-ch-ua", `Google Chrome";v="95", "Chromium";v="95", ";Not A Brand";v="99"`)
-//		loginRequest.Header.Add("sec-ch-ua-mobile", "?0")
-//		loginRequest.Header.Add("sec-ch-ua-platform", `"macOS"`)
-//		loginRequest.Header.Add("sec-fetch-dest", "document")
-//		loginRequest.Header.Add("sec-fetch-mode", "navigate")
-//		loginRequest.Header.Add("sec-fetch0-site", "none")
-//		loginRequest.Header.Add("sec-fetch-user", "?1")
-//		getResponse, err = api.client.Do(loginRequest)
-//		log.Println("Response cookies = ", getResponse.Cookies())
-////		getResponse, err := api.client.Get(APIAUTHORIZEURL + "?" + strParams)
-//		defer func() {
-//			err := getResponse.Body.Close()
-//			if err != nil {
-//				fmt.Println(err)
-//			}
-//		}()
-//		if err != nil {
-//			log.Println("Login page failure - ", err)
-//			loginFailureMessage(w, err)
-//			return
-//		}
-//
-//		log.Println("Got initial login page - status = ", getResponse.StatusCode)
-//		if getResponse.StatusCode != 200 {
-//			body, err2 := ioutil.ReadAll(getResponse.Body)
-//			err3 := getResponse.Body.Close()
-//			if err3 != nil {
-//				log.Println(err3)
-//			}
-//			if err2 != nil {
-//				loginFailureMessage(w, err2)
-//				return
-//			}
-//
-//			loginFailureMessage(w, fmt.Errorf("Tesla login page returned %s\n", string(body)))
-//			return
-////		} else {
-////			body, _ := ioutil.ReadAll(getResponse.Body)
-////			getResponse.Body.Close()
-//////			w.Header().Add("content-type", "text/html; charset=UTF-8")
-////			fmt.Fprint(w, string(body))
-////			return
-//		}
-//
-//		//		for _, cookie := range getResponse.Cookies() {
-//		//			if cookie.Name == "tesla-auth.sid" {
-//		//				api.sessionCookie = *cookie
-//		//			}
-//		//		}
-//		//		if api.sessionCookie.Value == "" {
-//		//			loginFailureMessage(w, fmt.Errorf("TeslaAPI The session cookie was missing"))
-//		//			return
-//		//		}
-//
-//		//QueryParams = make(url.Values)
-//		//QueryParams.Set("client_id", "ownerapi")
-//		//QueryParams.Add("code_challenge", makeCodeChallenge(codeVerifier))
-//		//QueryParams.Add("code_challenge_method", "S256")
-//		//QueryParams.Add("redirect_uri", APIAUTHCLIENTREDIRECTURL)
-//		//QueryParams.Add("response_type", "code")
-//		//QueryParams.Add("scope", APIAUTHSCOPE)
-//		//QueryParams.Add("state", state)
-//		//QueryParams.Add("login_hint", "tesla@cedartechnology.com")
-//
-//		// Load the HTML document
-//
-//		doc, err := goquery.NewDocumentFromReader(getResponse.Body)
-//		if err != nil {
-//			loginFailureMessage(w, err)
-//			return
-//		}
-//
-//		form = getHiddenInputFields(doc)
-//		form.Add("identity", email)
-//		form.Add("credential", password)
-////		form.Add("code_verifier", codeVerifier)
-////		form.Add("state", state)
-//		log.Println("Login form created - ", form)
-//	} else {
-//		log.Println("Captcha found login page")
-//		codeVerifier = form["code_verifier"][0]
-//		state = form["state"][0]
-//	}
-//	// Post the login form
-//	//	request, err := http.NewRequest(http.MethodPost, APIAuthorizeURL+"?"+QueryParams.Encode(), strings.NewReader(form.Encode()))
-////	fmt.Println(`=====>`, APIAUTHORIZEURL + "?" + QueryParams.Encode())
-//
-//	// Set the code to an empty string then send the post to log in
-//	api.code = ""
-//	postURL := APIAUTHORIZEURL+"?"+QueryParams.Encode()
-//	log.Println("Post to <", postURL, "> | [", form, "]" )
-//	log.Println(api.client)
-//	req, err := http.NewRequest("POST", postURL, strings.NewReader(form.Encode()))
-//	req.Header.Add("content-type", "application/x-www-form-urlencoded")
-//	req.Header.Add("origin","https://auth.tesla.com")
-////	req.Header.Add("referer", )
-//	req.Header.Add("authority", "auth.tesla.com")
-//	req.Header.Add("accept", "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.9")
-//	req.Header.Add("accept-encoding", "gzip, deflate, br")
-//	req.Header.Add("accept-language", "en-GB,en-US;q=0.9,en;q=0.8")
-//	req.Header.Add("upgrade-insecure-requests", "1")
-//	req.Header.Add("user-agent", "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/95.0.4638.69 Safari/537.36")
-//	req.Header.Add("sec-ch-ua", `Google Chrome";v="95", "Chromium";v="95", ";Not A Brand";v="99"`)
-//	req.Header.Add("sec-ch-ua-mobile", "?0")
-//	req.Header.Add("sec-ch-ua-platform", `"macOS"`)
-//	req.Header.Add("sec-fetch-dest", "document")
-//	req.Header.Add("sec-fetch-mode", "navigate")
-//	req.Header.Add("sec-fetch0-site", "none")
-//	req.Header.Add("sec-fetch-user", "?1")
-//	log.Println("headers : ", req.Header)
-//	for _, c := range getResponse.Cookies() {
-//		req.AddCookie(c)
-//	}
-//	log.Println("Response Cookies = ", getResponse.Cookies())
-//	log.Println("Request Cookies = ", req.Cookies())
-//	response, err := api.client.Do(req)
-//	defer func() {
-//		if response != nil {
-//			err := response.Body.Close()
-//			if err != nil {
-//				loginFailureMessage(w, err)
-//				return
-//			}
-//		}
-//	}()
-//
-//	log.Println("Post returned ", response.StatusCode, " : ", response.Status)
-//
-//	if err != nil {
-//		loginFailureMessage(w, err)
-//		return
-//	}
-//
-//	//	fmt.Println("Initial request returned status = %d", response.StatusCode)
-//	if api.code == "" {
-//		if response.StatusCode == 200 {
-//			doc, err := goquery.NewDocumentFromReader(response.Body)
-//			if err != nil {
-//				loginFailureMessage(w, err)
-//				return
-//			}
-//			log.Println("Check for captcha")
-//			if api.CheckForCaptcha(w, doc, form) {
-//				return
-//			}
-//			log.Println("captcha required...")
-//			respBody, _ := doc.Html()
-//			_, err2 := fmt.Fprint(w, respBody)
-//			if err2 != nil {
-//				log.Println(err2)
-//			}
-//			return
-//		} else {
-//			loginFailureMessage(w, fmt.Errorf(" Tesla login returned %d - %s", response.StatusCode, response.Status))
-//		}
-//		return
-//	}
-//
-//	var requestParams = TokenRequestParams{
-//		GrantType:    "authorization_code",
-//		ClientID:     "ownerapi",
-//		Code:         api.code,
-//		CodeVerifier: codeVerifier,
-//		RedirectUri:  APIAUTHCLIENTREDIRECTURL,
-//		Scope:        APIAUTHSCOPE,
-//	}
-//
-//	requestParams.GrantType = "authorization_code"
-//	requestParams.ClientID = "ownerapi"
-//	requestParams.Code = api.code
-//	requestParams.CodeVerifier = codeVerifier
-//	requestParams.RedirectUri = APIAUTHCLIENTREDIRECTURL
-//
-//	// Body should contain the request parameters in application/json format
-//	requestBody, err := json.Marshal(requestParams)
-//	if err != nil {
-//		loginFailureMessage(w, err)
-//		return
-//	}
-//	fmt.Println(string(requestBody))
-//
-//	response, err = api.client.Post(APIAUTHEXCHANGEURL, "application/json", strings.NewReader(string(requestBody)))
-//	//	http.Post(APIAUTHEXCHANGEURL, "application/json", strings.NewReader(string(requestBody)))
-//	if err != nil {
-//		loginFailureMessage(w, err)
-//		return
-//	}
-//	body, err := ioutil.ReadAll(response.Body)
-//	closeError := response.Body.Close()
-//	if closeError != nil {
-//		log.Println(closeError)
-//	}
-//	if err != nil {
-//		loginFailureMessage(w, err)
-//		return
-//	}
-//	if response.StatusCode != 200 {
-//		fmt.Println("Status = ", response.Status)
-//	}
-//
-//	var tokenRead TokenRead
-//	err = json.Unmarshal(body, &tokenRead)
-//	if err != nil {
-//		loginFailureMessageWithBody(w, err, body)
-//		return
-//	}
-//
-//	// Now we need to exchange the bearer token for the access token
-//	var tokenExchangeParams = TokenExchangeParams{"urn:ietf:params:oauth:grant-type:jwt-bearer", APICLIENTID, APICLIENTSECRET}
-//	tokenExchangeParams.GrantType = "urn:ietf:params:oauth:grant-type:jwt-bearer"
-//	tokenExchangeParams.ClientID = APICLIENTID
-//	tokenExchangeParams.ClientSecret = APICLIENTSECRET
-//	requestBody, err = json.Marshal(tokenExchangeParams)
-//
-//	tokenRequest, err := http.NewRequest("POST", APITOKENURL, strings.NewReader(string(requestBody)))
-//	if err != nil {
-//		loginFailureMessage(w, err)
-//		return
-//	}
-//
-//	tokenRequest.Header.Add("Content-Type", "application/json")
-//	tokenRequest.Header.Add("Authorization", "Bearer "+tokenRead.AccessToken)
-//
-//	response, err = http.DefaultClient.Do(tokenRequest)
-//	if err != nil {
-//		loginFailureMessage(w, err)
-//		return
-//	}
-//
-//	body, err = ioutil.ReadAll(response.Body)
-//	err2 := response.Body.Close()
-//	if err2 != nil {
-//		log.Println(err2)
-//	}
-//	if err != nil {
-//		loginFailureMessage(w, err)
-//		return
-//	}
-//	if response.StatusCode != 200 {
-//		loginFailureMessage(w, fmt.Errorf("Status returned when fetching a token = %s\n %s ", response.Status, tokenRequest.Header.Get("Authorization")))
-//		_, err = fmt.Fprint(w, string(body), "\n\n")
-//		if err != nil {
-//			fmt.Println(err)
-//		}
-//		_, err = fmt.Fprint(w, string(requestBody))
-//		if err != nil {
-//			fmt.Println(err)
-//		}
-//		return
-//	}
-//
-//	err = json.Unmarshal(body, &tokenRead)
-//	if err != nil {
-//		loginFailureMessageWithBody(w, err, body)
-//		return
-//	}
-//
-//	api.teslaToken.AccessToken = tokenRead.AccessToken
-//	api.teslaToken.RefreshToken = tokenRead.RefreshToken
-//	api.teslaToken.TokenType = tokenRead.TokenType
-//	api.teslaToken.Expiry = time.Unix(tokenRead.CreatedAt, 0).Add(time.Second * time.Duration(tokenRead.ExpiresIn))
-//	fmt.Println("Created - ", tokenRead.CreatedAt)
-//	fmt.Println("Expires In - ", tokenRead.ExpiresIn)
-//
-//	newToken, err2 := json.Marshal(api.teslaToken)
-//	if err2 != nil {
-//		fmt.Println(err2)
-//	} else {
-//		err = ioutil.WriteFile(APIKEYFILE, newToken, os.ModePerm)
-//		if err != nil {
-//			fmt.Println(err)
-//		}
-//	}
-//
-//	api.teslaClient = api.oauthConfig.Client(api.ctx, api.teslaToken)
-//
-//	err = api.GetVehicleId()
-//	if err != nil {
-//		_, err = fmt.Fprint(w, `<html><head><title>Tesla Credentials Updated</title></head><body><h1>The Tesla API credentials have been updated.</h1><br>Error retrieving the Vehicle ID : `, err.Error(), `</body></html>`)
-//	} else {
-//		_, err = fmt.Fprint(w, `<html><head><title>Tesla Credentials Updated</title></head><body><h1>The Tesla API credentials have been updated.</h1><br>Vehicle ID = `, api.vId, `<br />`, CHARGINGLINKS, `</body></html>`)
-//	}
-//	if err != nil {
-//		fmt.Println(err)
-//	}
-//
-//}
-
-//// Called when /getTeslaKeys is requested. Login ID and Password for Tesla are provided in the form data.
-//func (api *TeslaAPI) HandleTeslaLogin(w http.ResponseWriter, r *http.Request) {
-//	var QueryParams = make(url.Values)
-//	var getResponse *http.Response
-//
-//	rand.Seed(time.Now().UTC().UnixNano())	// Initialise the random number generator
-//	codeVerifier := randomString(86)	// Create a random string for the codeVerifier
-//	state := randomString(10)			// Create a random state string
-//
-//	err := r.ParseForm()					// Parse the form to get the login ID and password
-//	if err != nil {
-//		fmt.Println(err)
-//	}
-//	var captcha = ""
-//	email := r.Form["identity"][0]
-//	password := r.Form["credential"][0]
-//	if len(r.Form["captcha"]) != 0 {
-//		captcha = r.Form["captcha"][0]
-//		codeVerifier = r.Form["code_verifier"][0]
-//		state = r.Form["state"][0]
-//	}
-//	form := r.Form
-//
-//	// If no captcha, start by getting the login page.
-//	if len(captcha) == 0 {
-//		log.Println("No Captcha so getting login page")
-//		QueryParams.Add("client_id", "ownerapi")
-//		QueryParams.Add("code_challenge", makeCodeChallenge(codeVerifier))
-//		QueryParams.Add("code_challenge_method", "S256")
-//		QueryParams.Add("redirect_uri", APIAUTHCLIENTREDIRECTURL)
-//		QueryParams.Add("response_type", "code")
-//		QueryParams.Add("scope", APIAUTHSCOPE)
-//		QueryParams.Add("state", state)
-//		QueryParams.Add("login_hint", "tesla@cedartechnology.com")
-//		strParams := QueryParams.Encode()
-//
-//		// Need to trap any redirect.
-//		log.Println("Check redirect")
-//		api.client.CheckRedirect = func(req *http.Request, via []*http.Request) error {
-//			// Is this the expected redirect?
-//			log.Println("req.URL.Path = ", req.URL.Path)
-//			if req.URL.Path == APIAUTHCLIENTREDIRECTPATH {
-//				// Look for the code in the query parameters
-//				log.Println(req.URL)
-//				api.code = req.URL.Query().Get("code")
-//				if api.code != "" {
-//					// We got the code as part of the redirect, so we can stop here.
-//					// The page we are being sent to, does not exist any way.
-//					return http.ErrUseLastResponse
-//				}
-//				// If we didn't get the code we should let this fail by letting it go to the redirect URL
-//			}
-//			// If this wwas not the expected redirect to get the code then simply allow it to be followed
-//			if len(via) > 9 {
-//				// Maximum of 10 redirects allowed
-//				return errors.New("too many redirects")
-//			}
-//			return nil
-//		}
-//
-//		log.Println("Getting login page <", APIAUTHORIZEURL + "?" + strParams + ">")
-//		loginRequest, err := http.NewRequest("GET", APIAUTHORIZEURL + "?" + strParams, nil)
-//		loginRequest.Header.Add("authority", "auth.tesla.com")
-//		loginRequest.Header.Add("accept", "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.9")
-//		loginRequest.Header.Add("accept-encoding", "gzip, deflate, br")
-//		loginRequest.Header.Add("accept-language", "en-GB,en-US;q=0.9,en;q=0.8")
-//		loginRequest.Header.Add("upgrade-insecure-requests", "1")
-//		loginRequest.Header.Add("user-agent", "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/95.0.4638.69 Safari/537.36")
-//		loginRequest.Header.Add("sec-ch-ua", `Google Chrome";v="95", "Chromium";v="95", ";Not A Brand";v="99"`)
-//		loginRequest.Header.Add("sec-ch-ua-mobile", "?0")
-//		loginRequest.Header.Add("sec-ch-ua-platform", `"macOS"`)
-//		loginRequest.Header.Add("sec-fetch-dest", "document")
-//		loginRequest.Header.Add("sec-fetch-mode", "navigate")
-//		loginRequest.Header.Add("sec-fetch0-site", "none")
-//		loginRequest.Header.Add("sec-fetch-user", "?1")
-//		getResponse, err = api.client.Do(loginRequest)
-//		log.Println("Response cookies = ", getResponse.Cookies())
-////		getResponse, err := api.client.Get(APIAUTHORIZEURL + "?" + strParams)
-//		defer func() {
-//			err := getResponse.Body.Close()
-//			if err != nil {
-//				fmt.Println(err)
-//			}
-//		}()
-//		if err != nil {
-//			log.Println("Login page failure - ", err)
-//			loginFailureMessage(w, err)
-//			return
-//		}
-//
-//		log.Println("Got initial login page - status = ", getResponse.StatusCode)
-//		if getResponse.StatusCode != 200 {
-//			body, err2 := ioutil.ReadAll(getResponse.Body)
-//			err3 := getResponse.Body.Close()
-//			if err3 != nil {
-//				log.Println(err3)
-//			}
-//			if err2 != nil {
-//				loginFailureMessage(w, err2)
-//				return
-//			}
-//
-//			loginFailureMessage(w, fmt.Errorf("Tesla login page returned %s\n", string(body)))
-//			return
-////		} else {
-////			body, _ := ioutil.ReadAll(getResponse.Body)
-////			getResponse.Body.Close()
-//////			w.Header().Add("content-type", "text/html; charset=UTF-8")
-////			fmt.Fprint(w, string(body))
-////			return
-//		}
-//
-//		//		for _, cookie := range getResponse.Cookies() {
-//		//			if cookie.Name == "tesla-auth.sid" {
-//		//				api.sessionCookie = *cookie
-//		//			}
-//		//		}
-//		//		if api.sessionCookie.Value == "" {
-//		//			loginFailureMessage(w, fmt.Errorf("TeslaAPI The session cookie was missing"))
-//		//			return
-//		//		}
-//
-//		//QueryParams = make(url.Values)
-//		//QueryParams.Set("client_id", "ownerapi")
-//		//QueryParams.Add("code_challenge", makeCodeChallenge(codeVerifier))
-//		//QueryParams.Add("code_challenge_method", "S256")
-//		//QueryParams.Add("redirect_uri", APIAUTHCLIENTREDIRECTURL)
-//		//QueryParams.Add("response_type", "code")
-//		//QueryParams.Add("scope", APIAUTHSCOPE)
-//		//QueryParams.Add("state", state)
-//		//QueryParams.Add("login_hint", "tesla@cedartechnology.com")
-//
-//		// Load the HTML document
-//
-//		doc, err := goquery.NewDocumentFromReader(getResponse.Body)
-//		if err != nil {
-//			loginFailureMessage(w, err)
-//			return
-//		}
-//
-//		form = getHiddenInputFields(doc)
-//		form.Add("identity", email)
-//		form.Add("credential", password)
-////		form.Add("code_verifier", codeVerifier)
-////		form.Add("state", state)
-//		log.Println("Login form created - ", form)
-//	} else {
-//		log.Println("Captcha found login page")
-//		codeVerifier = form["code_verifier"][0]
-//		state = form["state"][0]
-//	}
-//	// Post the login form
-//	//	request, err := http.NewRequest(http.MethodPost, APIAuthorizeURL+"?"+QueryParams.Encode(), strings.NewReader(form.Encode()))
-////	fmt.Println(`=====>`, APIAUTHORIZEURL + "?" + QueryParams.Encode())
-//
-//	// Set the code to an empty string then send the post to log in
-//	api.code = ""
-//	postURL := APIAUTHORIZEURL+"?"+QueryParams.Encode()
-//	log.Println("Post to <", postURL, "> | [", form, "]" )
-//	log.Println(api.client)
-//	req, err := http.NewRequest("POST", postURL, strings.NewReader(form.Encode()))
-//	req.Header.Add("content-type", "application/x-www-form-urlencoded")
-//	req.Header.Add("origin","https://auth.tesla.com")
-////	req.Header.Add("referer", )
-//	req.Header.Add("authority", "auth.tesla.com")
-//	req.Header.Add("accept", "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.9")
-//	req.Header.Add("accept-encoding", "gzip, deflate, br")
-//	req.Header.Add("accept-language", "en-GB,en-US;q=0.9,en;q=0.8")
-//	req.Header.Add("upgrade-insecure-requests", "1")
-//	req.Header.Add("user-agent", "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/95.0.4638.69 Safari/537.36")
-//	req.Header.Add("sec-ch-ua", `Google Chrome";v="95", "Chromium";v="95", ";Not A Brand";v="99"`)
-//	req.Header.Add("sec-ch-ua-mobile", "?0")
-//	req.Header.Add("sec-ch-ua-platform", `"macOS"`)
-//	req.Header.Add("sec-fetch-dest", "document")
-//	req.Header.Add("sec-fetch-mode", "navigate")
-//	req.Header.Add("sec-fetch0-site", "none")
-//	req.Header.Add("sec-fetch-user", "?1")
-//	log.Println("headers : ", req.Header)
-//	for _, c := range getResponse.Cookies() {
-//		req.AddCookie(c)
-//	}
-//	log.Println("Response Cookies = ", getResponse.Cookies())
-//	log.Println("Request Cookies = ", req.Cookies())
-//	response, err := api.client.Do(req)
-//	defer func() {
-//		if response != nil {
-//			err := response.Body.Close()
-//			if err != nil {
-//				loginFailureMessage(w, err)
-//				return
-//			}
-//		}
-//	}()
-//
-//	log.Println("Post returned ", response.StatusCode, " : ", response.Status)
-//
-//	if err != nil {
-//		loginFailureMessage(w, err)
-//		return
-//	}
-//
-//	//	fmt.Println("Initial request returned status = %d", response.StatusCode)
-//	if api.code == "" {
-//		if response.StatusCode == 200 {
-//			doc, err := goquery.NewDocumentFromReader(response.Body)
-//			if err != nil {
-//				loginFailureMessage(w, err)
-//				return
-//			}
-//			log.Println("Check for captcha")
-//			if api.CheckForCaptcha(w, doc, form) {
-//				return
-//			}
-//			log.Println("captcha required...")
-//			respBody, _ := doc.Html()
-//			_, err2 := fmt.Fprint(w, respBody)
-//			if err2 != nil {
-//				log.Println(err2)
-//			}
-//			return
-//		} else {
-//			loginFailureMessage(w, fmt.Errorf(" Tesla login returned %d - %s", response.StatusCode, response.Status))
-//		}
-//		return
-//	}
-//
-//	var requestParams = TokenRequestParams{
-//		GrantType:    "authorization_code",
-//		ClientID:     "ownerapi",
-//		Code:         api.code,
-//		CodeVerifier: codeVerifier,
-//		RedirectUri:  APIAUTHCLIENTREDIRECTURL,
-//		Scope:        APIAUTHSCOPE,
-//	}
-//
-//	requestParams.GrantType = "authorization_code"
-//	requestParams.ClientID = "ownerapi"
-//	requestParams.Code = api.code
-//	requestParams.CodeVerifier = codeVerifier
-//	requestParams.RedirectUri = APIAUTHCLIENTREDIRECTURL
-//
-//	// Body should contain the request parameters in application/json format
-//	requestBody, err := json.Marshal(requestParams)
-//	if err != nil {
-//		loginFailureMessage(w, err)
-//		return
-//	}
-//	fmt.Println(string(requestBody))
-//
-//	response, err = api.client.Post(APIAUTHEXCHANGEURL, "application/json", strings.NewReader(string(requestBody)))
-//	//	http.Post(APIAUTHEXCHANGEURL, "application/json", strings.NewReader(string(requestBody)))
-//	if err != nil {
-//		loginFailureMessage(w, err)
-//		return
-//	}
-//	body, err := ioutil.ReadAll(response.Body)
-//	closeError := response.Body.Close()
-//	if closeError != nil {
-//		log.Println(closeError)
-//	}
-//	if err != nil {
-//		loginFailureMessage(w, err)
-//		return
-//	}
-//	if response.StatusCode != 200 {
-//		fmt.Println("Status = ", response.Status)
-//	}
-//
-//	var tokenRead TokenRead
-//	err = json.Unmarshal(body, &tokenRead)
-//	if err != nil {
-//		loginFailureMessageWithBody(w, err, body)
-//		return
-//	}
-//
-//	// Now we need to exchange the bearer token for the access token
-//	var tokenExchangeParams = TokenExchangeParams{"urn:ietf:params:oauth:grant-type:jwt-bearer", APICLIENTID, APICLIENTSECRET}
-//	tokenExchangeParams.GrantType = "urn:ietf:params:oauth:grant-type:jwt-bearer"
-//	tokenExchangeParams.ClientID = APICLIENTID
-//	tokenExchangeParams.ClientSecret = APICLIENTSECRET
-//	requestBody, err = json.Marshal(tokenExchangeParams)
-//
-//	tokenRequest, err := http.NewRequest("POST", APITOKENURL, strings.NewReader(string(requestBody)))
-//	if err != nil {
-//		loginFailureMessage(w, err)
-//		return
-//	}
-//
-//	tokenRequest.Header.Add("Content-Type", "application/json")
-//	tokenRequest.Header.Add("Authorization", "Bearer "+tokenRead.AccessToken)
-//
-//	response, err = http.DefaultClient.Do(tokenRequest)
-//	if err != nil {
-//		loginFailureMessage(w, err)
-//		return
-//	}
-//
-//	body, err = ioutil.ReadAll(response.Body)
-//	err2 := response.Body.Close()
-//	if err2 != nil {
-//		log.Println(err2)
-//	}
-//	if err != nil {
-//		loginFailureMessage(w, err)
-//		return
-//	}
-//	if response.StatusCode != 200 {
-//		loginFailureMessage(w, fmt.Errorf("Status returned when fetching a token = %s\n %s ", response.Status, tokenRequest.Header.Get("Authorization")))
-//		_, err = fmt.Fprint(w, string(body), "\n\n")
-//		if err != nil {
-//			fmt.Println(err)
-//		}
-//		_, err = fmt.Fprint(w, string(requestBody))
-//		if err != nil {
-//			fmt.Println(err)
-//		}
-//		return
-//	}
-//
-//	err = json.Unmarshal(body, &tokenRead)
-//	if err != nil {
-//		loginFailureMessageWithBody(w, err, body)
-//		return
-//	}
-//
-//	api.teslaToken.AccessToken = tokenRead.AccessToken
-//	api.teslaToken.RefreshToken = tokenRead.RefreshToken
-//	api.teslaToken.TokenType = tokenRead.TokenType
-//	api.teslaToken.Expiry = time.Unix(tokenRead.CreatedAt, 0).Add(time.Second * time.Duration(tokenRead.ExpiresIn))
-//	fmt.Println("Created - ", tokenRead.CreatedAt)
-//	fmt.Println("Expires In - ", tokenRead.ExpiresIn)
-//
-//	newToken, err2 := json.Marshal(api.teslaToken)
-//	if err2 != nil {
-//		fmt.Println(err2)
-//	} else {
-//		err = ioutil.WriteFile(APIKEYFILE, newToken, os.ModePerm)
-//		if err != nil {
-//			fmt.Println(err)
-//		}
-//	}
-//
-//	api.teslaClient = api.oauthConfig.Client(api.ctx, api.teslaToken)
-//
-//	err = api.GetVehicleId()
-//	if err != nil {
-//		_, err = fmt.Fprint(w, `<html><head><title>Tesla Credentials Updated</title></head><body><h1>The Tesla API credentials have been updated.</h1><br>Error retrieving the Vehicle ID : `, err.Error(), `</body></html>`)
-//	} else {
-//		_, err = fmt.Fprint(w, `<html><head><title>Tesla Credentials Updated</title></head><body><h1>The Tesla API credentials have been updated.</h1><br>Vehicle ID = `, api.vId, `<br />`, CHARGINGLINKS, `</body></html>`)
-//	}
-//	if err != nil {
-//		fmt.Println(err)
-//	}
-//
-//}
 
 /*
 Sample token file
@@ -1040,22 +190,22 @@ Sample token file
 }
 */
 
-// Called when /getTeslaKeys is requested. Login ID and Password for Tesla are provided in the form data.
-func (api *TeslaAPI) HandleTeslaLogin(w http.ResponseWriter, r *http.Request) {
+// HandleSetTeslaTokens - Called when /setTeslaKeys is requested. Access and Refresh keys are provided in the form.
+func (api *TeslaAPI) HandleSetTeslaTokens(w http.ResponseWriter, r *http.Request) {
 	err := r.ParseForm() // Parse the form to get the keys
 	if err != nil {
 		log.Println(err)
-		_, err := fmt.Fprint(w, "<html><title>Failed to get keys</title><head></head><body><h1>Failed to get the keys</h1>", err.Error(), "</body></html>")
+		_, err := fmt.Fprint(w, "<html><title>Failed to get keys</title><head></head><body><h1>Failed to get the tokens</h1>", err.Error(), "</body></html>")
 		if err != nil {
 			log.Println(err)
 		}
 	}
 
-	api.teslaToken.AccessToken = r.Form["access_key"][0]
-	api.teslaToken.RefreshToken = r.Form["refresh_key"][0]
+	api.teslaToken.AccessToken = r.Form["access_token"][0]
+	api.teslaToken.RefreshToken = r.Form["refresh_token"][0]
 	api.teslaToken.TokenType = "bearer"
-	api.teslaToken.Expiry = time.Now().Add(time.Hour * 5)
-	api.teslaToken.IDToken = ""
+	api.teslaToken.Expiry = time.Now().Add(time.Hour * 8)
+	//	api.teslaToken.IDToken = ""
 
 	newToken, err2 := json.Marshal(api.teslaToken)
 	if err2 != nil {
@@ -1063,7 +213,7 @@ func (api *TeslaAPI) HandleTeslaLogin(w http.ResponseWriter, r *http.Request) {
 	} else {
 		err = ioutil.WriteFile(APIKEYFILE, newToken, os.ModePerm)
 		if err != nil {
-			fmt.Println(err)
+			log.Println(err)
 		}
 	}
 
@@ -1076,40 +226,19 @@ func (api *TeslaAPI) HandleTeslaLogin(w http.ResponseWriter, r *http.Request) {
 		_, err = fmt.Fprint(w, `<html><head><title>Tesla Credentials Updated</title></head><body><h1>The Tesla API credentials have been updated.</h1><br>Vehicle ID = `, api.vId, `<br />`, CHARGINGLINKS, `</body></html>`)
 	}
 	if err != nil {
-		fmt.Println(err)
+		log.Println(err)
 	}
 }
-
-/*
-func (api *TeslaAPI) CheckMultiFactorAuthentication(transaction_id string) string {
-	params := url.Values{"transaction_id": {transaction_id}}
-	request, err := http.NewRequest(http.MethodGet, APIMultiFactorURL+"?"+params.Encode(), nil)
-	if err != nil {
-		return ("New request failed in CheckMultiFactorAuthentication - " + err.Error())
-	}
-	response, err := api.client.Transport.RoundTrip(request)
-	//	getResponse, err := http.Get(APIMultiFactorURL + "?" + params.Encode())
-	if err != nil {
-		return ("MFA query returned " + err.Error())
-	}
-	body, err := ioutil.ReadAll(response.Body)
-	response.Body.Close()
-	if err != nil {
-		fmt.Println(err)
-	}
-	return string(body)
-}
-*/
 
 func (api *TeslaAPI) postCarCommand(sCommand string) ([]byte, error) {
 	response, err := api.teslaClient.Post(sCommand, "application/json", nil)
 	if err != nil {
-		fmt.Println(err)
+		log.Println(err)
 	} else {
 		defer func() {
 			err := response.Body.Close()
 			if err != nil {
-				fmt.Println(err)
+				log.Println(err)
 			}
 		}()
 		if response.StatusCode != 200 {
@@ -1122,7 +251,7 @@ func (api *TeslaAPI) postCarCommand(sCommand string) ([]byte, error) {
 		}
 
 		if err != nil {
-			fmt.Println(err)
+			log.Println(err)
 		} else {
 			return body, nil
 		}
@@ -1145,6 +274,7 @@ func (api *TeslaAPI) GetVehicleId() error {
 	var vehicles teslaVehicles
 
 	api.vId = 0
+	log.Println("getting Tesla vehicle ID")
 	if api.teslaClient == nil {
 		if api.lastEmail.Before(time.Now().Add(0 - time.Hour)) {
 			errorMail := api.SendMail("Tesla API Not Configured", "A call was made to GetVehicleId() but the Tesla API is not configured.")
@@ -1157,34 +287,47 @@ func (api *TeslaAPI) GetVehicleId() error {
 	} else {
 		response, err := api.teslaClient.Get(APIEPVEHICLESURL)
 		if err != nil {
+			log.Println(err)
 			return err
 		} else {
 			defer func() {
 				err := response.Body.Close()
 				if err != nil {
-					fmt.Println(err)
+					log.Println(err)
 				}
 			}()
 			body, err := ioutil.ReadAll(response.Body)
-			errorClose := response.Body.Close()
-			if errorClose != nil {
-				log.Println(errorClose)
-			}
+			//			errorClose := response.Body.Close()
+			//			if errorClose != nil {
+			//				log.Println(errorClose)
+			//			}
 			if err != nil {
 				return err
 			} else {
 				if response.StatusCode == 401 {
+					log.Println("TeslaAPI returned unauthorised.")
 					return fmt.Errorf("TeslaAPI returned unauthorised. Token = %s", api.teslaToken.AccessToken)
 				}
 				if response.StatusCode == 404 {
 					return fmt.Errorf("TeslaAPI returned %s when looking for vehicle IDs", response.Status)
 				}
-				fmt.Println("TeslaAPI - Get Vehicles returned status : ", response.StatusCode, " : ", response.Status)
+				log.Println("TeslaAPI - Get Vehicles returned status : ", response.StatusCode, " : ", response.Status)
 				err = json.Unmarshal(body, &vehicles)
 				if err != nil {
 					return err
 				} else {
 					api.vId = vehicles.Response[0].Id
+					newToken, err2 := json.Marshal(api.teslaToken)
+					if err2 != nil {
+						log.Println(err2)
+					} else {
+						err = ioutil.WriteFile(APIKEYFILE, newToken, os.ModePerm)
+						if err != nil {
+							log.Println(err)
+						} else {
+							log.Println("Tesla key file rewritten.")
+						}
+					}
 				}
 			}
 		}
@@ -1294,7 +437,7 @@ func (api *TeslaAPI) StartCharging() error {
 	}
 
 	api.commandHoldOff = true
-	time.AfterFunc(time.Minute*2, api.cancelCommandHoldoff)
+	time.AfterFunc(time.Minute, api.cancelCommandHoldoff)
 
 	if !api.WakeCar() {
 		return errors.New("TeslaAPI Failed to wake up the car before sending the start charging command")
@@ -1335,7 +478,7 @@ func (api *TeslaAPI) StopCharging() error {
 	}
 	// Prevent spamming by holding off on another command for 2 minutes
 	api.commandHoldOff = true
-	time.AfterFunc(time.Minute*2, api.cancelCommandHoldoff)
+	time.AfterFunc(time.Minute, api.cancelCommandHoldoff)
 
 	log.Println("TeslaAPI - Waking up Zoe")
 	if !api.WakeCar() {
