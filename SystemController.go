@@ -1,10 +1,8 @@
 package main
 
 import (
-	"SystemController/InverterValues"
 	"SystemController/Params"
 	"SystemController/TeslaAPI"
-	"SystemController/heaterSetting"
 	"SystemController/twcMessage"
 	"SystemController/twcSlave"
 	_ "crypto/aes"
@@ -12,10 +10,7 @@ import (
 	"encoding/json"
 	"flag"
 	"fmt"
-	"github.com/IanAber/CanMessages/v2/Can010"
-	"github.com/IanAber/CanMessages/v2/Can305"
-	"github.com/IanAber/CanMessages/v2/Can306"
-	"github.com/IanAber/CanMessages/v2/Can307"
+	"github.com/IanAber/SMACanMessages"
 	"log"
 	"net/http"
 	"os"
@@ -49,8 +44,9 @@ var (
 	masterAddress    uint
 	port             serial.Port
 	TeslaParameters  Params.Params
-	Heater           *heaterSetting.HeaterSetting
-	iValues          InverterValues.InverterValues
+	Heater           *HeaterSetting
+	Electrolyser     ElectrolyserSetting
+	iValues          InverterValues
 	slaves           []twcSlave.Slave
 	pDB              *sql.DB
 	API              *TeslaAPI.TeslaAPI
@@ -430,22 +426,23 @@ func getValues(w http.ResponseWriter, _ *http.Request) {
 func handleCANFrame(frm can.Frame) {
 	switch frm.ID {
 	case 0x305: // Battery voltage, current and state of charge
-		c305 := Can305.Can305{}.New(frm.Data[0:])
-
+		c305 := SMACanMessages.NewCan305(frm.Data[0:])
 		iValues.SetVolts(c305.VBatt())
 		iValues.SetAmps(c305.IBatt())
 		iValues.SetSOC(c305.SocBatt())
+		//		log.Printf("V = %f, I = %f, DOC = %f\n", c305.VBatt(), c305.IBatt(), c305.SocBatt())
 
 	case 0x306: // Charge procedure, Operating state, Active error, Charge set point
-		c306 := Can306.Can306{}.New(frm.Data[0:])
+		c306 := SMACanMessages.NewCan306(frm.Data[0:])
 		iValues.SetSetPoint(c306.ChargeSetPoint())
 
 	case 0x010: // Frequency
-		c010 := Can010.Can010{}.New(frm.Data[0:])
+		c010 := SMACanMessages.NewCan010(frm.Data[0:])
 		iValues.SetFrequency(c010.Frequency())
+		//		log.Printf("Frequency = %f\n", c010.Frequency())
 
 	case 0x307: // Relays and status
-		c307 := Can307.Can307{}.New(frm.Data[0:])
+		c307 := SMACanMessages.NewCan307(frm.Data[0:])
 		iValues.GnRun = c307.GnRun()
 		iValues.OnRelay1 = c307.Relay1Master()
 		iValues.OnRelay2 = c307.Relay2Master()
@@ -544,7 +541,7 @@ func init() {
 
 	// Initialise the current values
 	TeslaParameters.Reset()
-	Heater = heaterSetting.New()
+	Heater = NewHeaterSetting()
 	// Set up the quintic function to control charging
 	err := iValues.LoadFunctionConstants("/var/www/html/params/charge_params.json")
 	if err != nil {
@@ -638,12 +635,17 @@ func calculatePowerAvailable() {
 	var soc float32
 	//	var frequency float64
 	var delta int16
+	lastPowerState := 0
 
 	for {
-		//		soc = iValues.GetSOC()
-		//		frequency = iValues.GetFrequency()
-
 		powerState := iValues.GetChargeLevel()
+		// If we get to a point where we are inside the ideal window before midday then preheat the electrolysers ready to produce hydrogen.
+		if powerState == 0 && lastPowerState == -1 {
+			if time.Now().Hour() < 12 {
+				Electrolyser.preHeat()
+			}
+		}
+		lastPowerState = powerState
 
 		// Set the total car charging current for all cars charging
 		carCurrent := float32(0.0)
@@ -663,6 +665,7 @@ func calculatePowerAvailable() {
 		if iValues.AutoGn {
 			// If the generator is running turn off the Tesla and the auxiliary heater
 			TeslaParameters.SetMaxAmps(0)
+			Electrolyser.Decrease(100)
 			if Heater.GetSetting() > 0 {
 				Heater.SetHeater(0)
 			}
@@ -672,34 +675,44 @@ func calculatePowerAvailable() {
 				delta = 0 - int16(int(iValues.GetAmps())/5)
 				//				delta = 1
 				if !TeslaParameters.ChangeCurrent(delta) {
-					// Charge rate increase was not accepted so turn up the auxiliary heater
-					Heater.Increase(iValues.GetFrequency())
+					// Charge rate increase was not accepted so turn up the electrolyser
+					if !Electrolyser.Increase(5) {
+						Heater.Increase(iValues.GetFrequency())
+					}
 				} else {
 					// Tesla accepted the increase, so we should drop the heater a bit ignoring hold time setting
-					Heater.Decrease(true)
+					if !Heater.Decrease(true) {
+						Electrolyser.Decrease(5)
+					}
 				}
 			} else {
+
 				// No car charging requested so set the available current to 25.0 amps and turn up the auxiliary heater
 				TeslaParameters.SetMaxAmps(25.0)
-				Heater.Increase(iValues.GetFrequency())
+				if !Electrolyser.Increase(5) {
+					Heater.Increase(iValues.GetFrequency())
+				}
 			}
 		} else if powerState == -1 { // If the delta is more than the max we need to reduce the load to give the battery chance to charge up
 			if !Heater.Decrease(false) {
-				// if the heater is already off and the car is charging then reduce the car charge rate
-				if carCurrent > 1 {
-					// If we are not discharging and the car is not charging at 6 amps or above then leave it alone
-					if (iValues.GetAmps() > 1) || (carCurrent > 6) {
-						// If the state of charge is 95% or more don't let the car current fall below 8 amps
-						if (soc < 95.0) || (carCurrent > 8) {
-							switch {
-							case iValues.GetAmps() > 35:
-								TeslaParameters.ChangeCurrent(0 - int16(iValues.GetAmps()/7))
-							case carCurrent > 30.0:
-								TeslaParameters.ChangeCurrent(-3)
-							case carCurrent > 20.0:
-								TeslaParameters.ChangeCurrent(-2)
-							default:
-								TeslaParameters.ChangeCurrent(-1)
+				// if the heater is already off reduce the electrolyser output
+				if !Electrolyser.Decrease(5) {
+					// if the electrolysers are off and the car is charging then reduce the car charge rate
+					if carCurrent > 1 {
+						// If we are not discharging and the car is not charging at 6 amps or above then leave it alone
+						if (iValues.GetAmps() > 1) || (carCurrent > 6) {
+							// If the state of charge is 95% or more don't let the car current fall below 8 amps
+							if (soc < 95.0) || (carCurrent > 8) {
+								switch {
+								case iValues.GetAmps() > 35:
+									TeslaParameters.ChangeCurrent(0 - int16(iValues.GetAmps()/7))
+								case carCurrent > 30.0:
+									TeslaParameters.ChangeCurrent(-3)
+								case carCurrent > 20.0:
+									TeslaParameters.ChangeCurrent(-2)
+								default:
+									TeslaParameters.ChangeCurrent(-1)
+								}
 							}
 						}
 					}

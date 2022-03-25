@@ -3,7 +3,7 @@ module SystemController
 go 1.16
 
 require (
-	github.com/IanAber/CanMessages/v2 v2.0.0-20220205212201-385a0794fcac
+	github.com/IanAber/SMACanMessages v0.0.0-20220324225941-122bdd7703db
 	github.com/brutella/can v0.0.2
 	github.com/go-sql-driver/mysql v1.6.0
 	github.com/goburrow/serial v0.1.0
