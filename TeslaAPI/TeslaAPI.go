@@ -148,8 +148,8 @@ func (api *TeslaAPI) cancelCommandHoldoff() {
 // Send email to the administrator. Change the parameters for the email server etc. here.
 func (api *TeslaAPI) SendMail(subject string, body string) error {
 	//	fmt.Println("Sending mail to Ian : subject = ", subject, "\nbody : ", body)
-	err := smtp.SendMail("mail.cedartechnology.com:587",
-		smtp.PlainAuth("", "pi@cedartechnology.com", "7444561", "mail.cedartechnology.com"),
+	err := smtp.SendMail("smtp.titan.email:587",
+		smtp.PlainAuth("", "pi@cedartechnology.com", "7444561", "smtp.titan.email"),
 		"pi@cedartechnology.com", []string{"ian.abercrombie@cedartechnology.com"}, []byte(`From: Aberhome1
 To: Ian.Abercrombie@cedartechnology.com
 Subject: `+subject+`

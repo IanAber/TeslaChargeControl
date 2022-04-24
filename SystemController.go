@@ -27,6 +27,7 @@ import (
 // Version 2 makes parameters editable via the WEB interface
 
 const CHARGINGLINKS = `<a href="/startCharging">Start Charging</a><br><a href="/stopCharging">Stop Charging</a>`
+const maxGasPressure = 34.0 // Pressure above which we do not increase the electrolyser output
 
 var (
 	address          string
@@ -252,6 +253,8 @@ func setUpWebSite() {
 	router.HandleFunc("/mail", mailForm).Methods("GET")
 	router.HandleFunc("/startCharging", handleStartCharging)
 	router.HandleFunc("/stopCharging", handleStopCharging)
+	router.HandleFunc("/enableElectrolyser", enableElectrolyser).Methods("GET", "POST")
+	router.HandleFunc("/disableElectrolyser", disableElectrolyser).Methods("GET", "POST")
 
 	fileServer := http.FileServer(neuteredFileSystem{http.Dir("./web")})
 	router.PathPrefix("/").Handler(http.StripPrefix("/", fileServer))
@@ -324,15 +327,23 @@ func disableLogging(w http.ResponseWriter, r *http.Request) {
 }
 
 func enableHeater(w http.ResponseWriter, r *http.Request) {
-
 	Heater.SetEnabled(true)
 	getValues(w, r)
 }
 
 func disableHeater(w http.ResponseWriter, r *http.Request) {
-
 	Heater.SetEnabled(false)
 	Heater.SetHeater(0)
+	getValues(w, r)
+}
+
+func enableElectrolyser(w http.ResponseWriter, r *http.Request) {
+	Electrolyser.SetEnabled(true)
+	getValues(w, r)
+}
+
+func disableElectrolyser(w http.ResponseWriter, r *http.Request) {
+	Electrolyser.SetEnabled(false)
 	getValues(w, r)
 }
 
@@ -403,6 +414,10 @@ func getValues(w http.ResponseWriter, _ *http.Request) {
 	}
 	_, _ = fmt.Fprintf(w, `
 		]},
+	"electrolyser":{
+		"enabled":%t,
+		"level":%d
+	},
 	"heater":{
 		"setting":%d,
 		"pump":"%s",
@@ -418,7 +433,8 @@ func getValues(w http.ResponseWriter, _ *http.Request) {
 		"vBattDeltaMax":%0.2f,
 %s
 	}
-}`, Heater.GetSetting(), sPump, Heater.GetEnabled(), iValues.GetFrequency(), iValues.GetSetPoint(),
+}`, Electrolyser.IsEnabled(), Electrolyser.GetRate(),
+		Heater.GetSetting(), sPump, Heater.GetEnabled(), iValues.GetFrequency(), iValues.GetSetPoint(),
 		iValues.GetVolts(), iValues.GetAmps(), iValues.GetSOC(),
 		iValues.GetVBattDeltaMin(), iValues.GetVBattDeltaMax(), iValues.GetFlags())
 }
@@ -586,7 +602,8 @@ func init() {
 	}
 
 	log.SetFlags(log.Lshortfile | log.Ldate | log.Ltime)
-
+	Electrolyser.Enabled = true
+	Electrolyser.gasPressure = maxGasPressure
 	// Start handling incoming CAN bus messages
 	go processCANFrames()
 }
@@ -682,13 +699,13 @@ func calculatePowerAvailable() {
 				} else {
 					// Tesla accepted the increase, so we should drop the heater a bit ignoring hold time setting
 					if !Heater.Decrease(true) {
-						Electrolyser.Decrease(5)
+						Electrolyser.Decrease(10)
 					}
 				}
 			} else {
 
-				// No car charging requested so set the available current to 25.0 amps and turn up the auxiliary heater
-				TeslaParameters.SetMaxAmps(25.0)
+				// No car charging requested so set the available current to 15.0 amps and turn up the auxiliary heater
+				TeslaParameters.SetMaxAmps(15.0)
 				if !Electrolyser.Increase(5) {
 					Heater.Increase(iValues.GetFrequency())
 				}
@@ -715,6 +732,11 @@ func calculatePowerAvailable() {
 								}
 							}
 						}
+					}
+				} else {
+					// Even if we think we dropped the electrolyser rte we should still drop the Tesl rate
+					if Electrolyser.requestedSetting != Electrolyser.currentSetting && carCurrent > 6 {
+						TeslaParameters.ChangeCurrent(-5)
 					}
 				}
 			}

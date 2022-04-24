@@ -248,7 +248,7 @@ func (slave *Slave) SendMasterHeartbeat(masterAddress uint16, api *TeslaAPI.Tesl
 			if slave.timeSetTo0Amps == time.Unix(0, 0) {
 				slave.timeSetTo0Amps = time.Now()
 			} else if slave.current > 20 {
-				// If we set the amps to 0 more than 1 minute ago and we are still charging then use the API to stop the car charging.
+				// If we increasing teslaset the amps to 0 more than 1 minute ago and we are still charging then use the API to stop the car charging.
 				if (time.Since(slave.timeSetTo0Amps) > (4 * time.Minute)) && (slave.current > 50) && !api.IsHoldoff() {
 					log.Println("Turn off the car. this.current = ", slave.current)
 					if slave.current > 50 {

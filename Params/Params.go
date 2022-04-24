@@ -6,7 +6,7 @@ import (
 	"time"
 )
 
-const minAmps = 5.0
+const minAmps = 5
 
 // Params /**
 type Params struct {
@@ -79,43 +79,48 @@ func (p *Params) Reset() {
 func (p *Params) ChangeCurrent(delta int16) bool {
 	p.mu.Lock()
 	defer p.mu.Unlock()
+	maxAmps := int16(p.maxAmps)
+	systemMax := int16(p.systemMax)
 
 	if delta > 0 {
 		// Going up...
-		if p.maxAmps == p.systemMax {
+		if maxAmps >= systemMax {
 			// We are already at the system maximum so do nothing
 			return false
 		}
 		// Give it at least 5 seconds between increases but pretend we did push it up.
 		if p.lastChange.Add(time.Second * 5).Before(time.Now()) {
 			// If it has been 5 seconds since the last increase then push up the charge current and reset the time
-			p.maxAmps += float32(delta)
-			if p.maxAmps < minAmps {
-				p.maxAmps = minAmps
+			maxAmps += delta
+
+			if maxAmps < minAmps {
+				maxAmps = minAmps
 			}
-			if p.maxAmps > p.systemMax {
+			if maxAmps > systemMax {
 				// Don't go over the system maximum
-				p.maxAmps = p.systemMax
+				maxAmps = systemMax
 			}
-			log.Println("Increasing Tesla current to", p.maxAmps, "Amps")
+			log.Println("Increasing Tesla current to", maxAmps, "Amps")
 			p.lastChange = time.Now()
+			p.maxAmps = float32(maxAmps)
 		}
 	} else {
-		if p.maxAmps == 0 {
+		if maxAmps == 0 {
 			// Already at 0 Amps so do nothing
 			return false
 		}
 		// Wait 15 seconds between each change going downward.
 		// Hold the current for 45 seconds if it would shut the car down to lower it further.
 		// Pretend we did it if less than 15 seconds since the last change
-		if ((p.maxAmps < 7) && (p.lastChange.Add(time.Second * 45).Before(time.Now()))) || ((p.maxAmps >= 7) && (p.lastChange.Add(time.Second * 15).Before(time.Now()))) {
+		if ((maxAmps < 7) && (p.lastChange.Add(time.Second * 45).Before(time.Now()))) || ((maxAmps >= 7) && (p.lastChange.Add(time.Second * 15).Before(time.Now()))) {
 			// It has been at least 15 seconds since the last change so drop the current. Hold the current for 45 seconds if it would shut the car down to lower it further.
-			p.maxAmps += float32(delta)
-			if p.maxAmps < minAmps {
+			maxAmps += delta
+			if maxAmps < minAmps {
 				// Don't let it go below 0 Amps
-				p.maxAmps = 0.0
+				maxAmps = 0
 			}
-			log.Println("Decreasing Tesla current to", p.maxAmps, "Amps")
+			p.maxAmps = float32(maxAmps)
+			log.Println("Decreasing Tesla current to", maxAmps, "Amps")
 			// Record the time
 			p.lastChange = time.Now()
 		}
