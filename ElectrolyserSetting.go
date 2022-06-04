@@ -10,12 +10,16 @@ import (
 	"time"
 )
 
+/**
+Electrolysers can be adjusted from 60% to 100%. Their current consumption is approximately 6.5A @ 60% to 11A at 100%
+*/
+
 const MaxStartPressure = 32.5 // We will not start the electrolysers if the tank pressure is above or equal to this
 
 type ElectrolyserSetting struct {
 	mu               sync.Mutex // Controls access
-	currentSetting   int8       // -1 = switched off, 0 = stopped. Defines the target output
-	requestedSetting int8       // The last setting request made to the Firefly
+	currentSetting   int16      // -1 = switched off, 0 = stopped. Defines the target output
+	requestedSetting int16      // The last setting request made to the Firefly
 	turnedOnOff      time.Time  // This is the time the turn on or turn off command was sent
 	gasPressure      float64    // The tank pressure in bar.
 	status           string     // Status is OFF. Idle, Standby or Active
@@ -23,11 +27,19 @@ type ElectrolyserSetting struct {
 	maxGasPressure   float64    // This is the pressure at which we no longer increase the productiuon rate
 }
 
+func closeResponse(response *http.Response) {
+	if response != nil {
+		if err := response.Body.Close(); err != nil {
+			log.Println("Failed to close http response body - ", err)
+		}
+	}
+}
+
 func (e *ElectrolyserSetting) IsEnabled() bool {
 	return e.Enabled
 }
 
-func (e *ElectrolyserSetting) GetRate() int8 {
+func (e *ElectrolyserSetting) GetRate() int16 {
 	return e.currentSetting
 }
 
@@ -53,9 +65,10 @@ func (e *ElectrolyserSetting) setElectrolyser() {
 		log.Print(err)
 		return
 	}
-	e.requestedSetting = int8(jRate.Rate)
+	e.requestedSetting = int16(jRate.Rate)
 
-	_, err = http.Post("http://firefly.home:20080/el/setrate", "application/json; charset=utf-8", bytes.NewBuffer(body))
+	response, err := http.Post("http://firefly.home:20080/el/setrate", "application/json; charset=utf-8", bytes.NewBuffer(body))
+	defer closeResponse(response)
 	if err != nil {
 		log.Print(err)
 	} else {
@@ -71,7 +84,8 @@ func (e *ElectrolyserSetting) turnOnElectrolysers() {
 	if e.gasPressure >= MaxStartPressure {
 		return
 	}
-	_, err := http.Post("http://firefly.home:20080/el/on", "application/json; charset=utf-8", nil)
+	response, err := http.Post("http://firefly.home:20080/el/on", "application/json; charset=utf-8", nil)
+	defer closeResponse(response)
 	if err != nil {
 		log.Print(err)
 	} else {
@@ -84,7 +98,8 @@ func (e *ElectrolyserSetting) turnOffElectrolysers() {
 	if !e.Enabled {
 		return
 	}
-	_, err := http.Post("http://firefly.home:20080/el/off", "application/json; charset=utf-8", nil)
+	response, err := http.Post("http://firefly.home:20080/el/off", "application/json; charset=utf-8", nil)
+	defer closeResponse(response)
 	if err != nil {
 		log.Print(err)
 	} else {
@@ -93,9 +108,8 @@ func (e *ElectrolyserSetting) turnOffElectrolysers() {
 	}
 }
 
-// MaxInt8
-// returns the larger of the two int8 variables passed in
-func MaxInt8(a int8, b int8) int8 {
+// MaxInt16 returns the larger of the two int8 variables passed in
+func MaxInt16(a int16, b int16) int16 {
 	if a > b {
 		return a
 	} else {
@@ -103,63 +117,126 @@ func MaxInt8(a int8, b int8) int8 {
 	}
 }
 
-func (e *ElectrolyserSetting) Increase(step int8) bool {
-	if !e.Enabled {
-		return false
-	}
-	e.ReadSetting()
-	if e.gasPressure >= maxGasPressure {
-		// If pressure is at 34bar then we won't push the electorlyser up. This stops us form short cycling them when they are
-		// already close to the cut off and above the restart pressure
-		return false
-	}
-	if e.status == "OFF" {
-		// electrolysers are turned off
-		if time.Since(e.turnedOnOff) > (time.Minute * 5) {
-			// Only allow one turn of/off command every 5 minutes minute
-			e.turnOnElectrolysers()
-		}
-		return false
-	}
-
-	if e.status == "Standby" {
-		// One or more electrolyser is in standby becuse the tank is up to maximum pressure so don't try and increase the output
-		return false
-	}
-
-	if e.currentSetting < 100 {
-		// We are not at full output so push it up by the step amount
-		e.currentSetting = MaxInt8(e.currentSetting+step, 100)
-		// Set the electrolyser production rate to the new increased value
-		e.setElectrolyser()
-		log.Println("Electrolyser increased to ", e.currentSetting)
-		// Tell the caller we accepted the request
-		return true
+// MinInt16 returns the smaller of the two int8 variables passed in
+func MinInt16(a int16, b int16) int16 {
+	if a < b {
+		return a
 	} else {
-		// We can't go any higher so tell the caller we didn't accept the request.
-		return false
+		return b
 	}
 }
 
-func (e *ElectrolyserSetting) Decrease(step int8) bool {
+func (e *ElectrolyserSetting) ChangeRate(step int16) bool {
 	if !e.Enabled {
 		return false
 	}
-	e.ReadSetting()
-	if e.currentSetting > 0 {
-		e.currentSetting = MaxInt8(e.currentSetting-step, 0)
-		e.setElectrolyser()
-		log.Println("Electrolyser decreased to ", e.currentSetting)
-		return true
-	} else {
-		//		log.Println("Electrolyser is already at 0%")
-		// If it is past 8:00PM and the electrolysers are still switched on, switch them off
-		if (e.currentSetting == 0) && (time.Now().Hour() >= 20) {
-			if time.Since(e.turnedOnOff) > (time.Second * 15) {
-				e.turnOffElectrolysers()
-			}
+	if step > 0 {
+		e.ReadSetting()
+		if e.gasPressure >= maxGasPressure {
+			// If pressure is at 34bar then we won't push the electorlyser up. This stops us form short cycling them when they are
+			// already close to the cutoff and above the restart pressure
+			return false
 		}
-		return false
+		if e.status == "OFF" {
+			// electrolysers are turned off
+			if time.Since(e.turnedOnOff) > (time.Minute * 5) {
+				// Only allow one turn of/off command every 5 minutes minute
+				e.turnOnElectrolysers()
+			}
+			return false
+		}
+
+		if e.status == "Standby" {
+			// One or more electrolyser is in standby becuse the tank is up to maximum pressure so don't try and increase the output
+			return false
+		}
+
+		if e.currentSetting < 100 {
+			// We are not at full output so push it up by the step amount
+			e.currentSetting = MinInt16(e.currentSetting+step, 100)
+			// Set the electrolyser production rate to the new increased value
+			e.setElectrolyser()
+			log.Println("Electrolyser increased to ", e.currentSetting)
+			// Tell the caller we accepted the request
+			return true
+		}
+	} else {
+		e.ReadSetting()
+		if e.currentSetting > 0 {
+			e.currentSetting = MaxInt16(e.currentSetting+step, 0)
+			e.setElectrolyser()
+			log.Println("Electrolyser decreased to ", e.currentSetting)
+			return true
+		}
+	}
+	return false
+}
+
+//func (e *ElectrolyserSetting) Increase(step int16) bool {
+//	if !e.Enabled {
+//		return false
+//	}
+//	e.ReadSetting()
+//	if e.gasPressure >= maxGasPressure {
+//		// If pressure is at 34bar then we won't push the electorlyser up. This stops us form short cycling them when they are
+//		// already close to the cutoff and above the restart pressure
+//		return false
+//	}
+//	if e.status == "OFF" {
+//		// electrolysers are turned off
+//		if time.Since(e.turnedOnOff) > (time.Minute * 5) {
+//			// Only allow one turn of/off command every 5 minutes minute
+//			e.turnOnElectrolysers()
+//		}
+//		return false
+//	}
+//
+//	if e.status == "Standby" {
+//		// One or more electrolyser is in standby becuse the tank is up to maximum pressure so don't try and increase the output
+//		return false
+//	}
+//
+//	if e.currentSetting < 100 {
+//		// We are not at full output so push it up by the step amount
+//		e.currentSetting = MinInt16(e.currentSetting+step, 100)
+//		// Set the electrolyser production rate to the new increased value
+//		e.setElectrolyser()
+//		log.Println("Electrolyser increased to ", e.currentSetting)
+//		// Tell the caller we accepted the request
+//		return true
+//	} else {
+//		// We can't go any higher so tell the caller we didn't accept the request.
+//		return false
+//	}
+//}
+//
+//func (e *ElectrolyserSetting) Decrease(step int16) bool {
+//	if !e.Enabled {
+//		return false
+//	}
+//	e.ReadSetting()
+//	if e.currentSetting > 0 {
+//		e.currentSetting = MaxInt16(e.currentSetting-step, 0)
+//		e.setElectrolyser()
+//		log.Println("Electrolyser decreased to ", e.currentSetting)
+//		return true
+//	} else {
+//		//		log.Println("Electrolyser is already at 0%")
+//		// If it is past 8:00PM and the electrolysers are still switched on, switch them off
+//		if (e.currentSetting == 0) && (time.Now().Hour() >= 20) {
+//			if time.Since(e.turnedOnOff) > (time.Second * 15) {
+//				e.turnOffElectrolysers()
+//			}
+//		}
+//		return false
+//	}
+//}
+
+func Int16Abs(a int16) int16 {
+	if a < 0 {
+		return 0 - a
+	} else {
+		return a
 	}
 }
 
@@ -175,7 +252,7 @@ func (e *ElectrolyserSetting) ReadSetting() {
 		return
 	}
 	var Rate struct {
-		Rate     int8    `json:"rate"`
+		Rate     int16   `json:"rate"`
 		Pressure float64 `json:"gas"`
 		Status   string  `json:"Status"`
 	}
@@ -188,8 +265,8 @@ func (e *ElectrolyserSetting) ReadSetting() {
 	e.gasPressure = Rate.Pressure
 	e.status = Rate.Status
 	log.Printf("Electrolyser returned gas=%f : setting=%d expected %d : status=%s\n", e.gasPressure, e.currentSetting, e.requestedSetting, e.status)
-	// This was not what we expected so update it.
-	if e.currentSetting != e.requestedSetting {
+	// This was not what we expected so update it if it is more than 5% out.
+	if Int16Abs(e.currentSetting-e.requestedSetting) > 5 {
 		log.Println("Adjusting...")
 		e.setElectrolyser()
 	}
@@ -199,10 +276,14 @@ func (e *ElectrolyserSetting) preHeat() {
 	if !e.Enabled {
 		return
 	}
-	_, err := http.Post("http://firefly.home:20080/el/preheat", "application/json; charset=utf-8", nil)
-	if err != nil {
-		log.Print(err)
-	} else {
-		log.Println("Electrolyser preheat started")
+	e.ReadSetting()
+	if e.status == "OFF" {
+		response, err := http.Post("http://firefly.home:20080/el/preheat", "application/json; charset=utf-8", nil)
+		defer closeResponse(response)
+		if err != nil {
+			log.Print(err)
+		} else {
+			log.Println("Electrolyser preheat started")
+		}
 	}
 }

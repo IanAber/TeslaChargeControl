@@ -89,10 +89,12 @@ type TeslaAPI struct {
 	lastEmail      time.Time
 	client         http.Client
 	code           string
+	AllowStart     bool // Do not allow the Tesla to start charging unless this is true
 }
 
 func New() (*TeslaAPI, error) {
 	t := new(TeslaAPI)
+	t.AllowStart = false
 	t.teslaToken = new(oauth2.Token)
 	t.ctx = context.Background()
 	bytes, err := ioutil.ReadFile(APIKEYFILE)
@@ -417,6 +419,11 @@ func (api *TeslaAPI) IsHoldoff() bool {
 
 func (api *TeslaAPI) StartCharging() error {
 
+	if !api.AllowStart {
+		// We are not allowed to start charging so ignore this request
+		log.Println("Tesla is not allowed to charge. Ignoring start request.")
+		return nil
+	}
 	if api.teslaClient == nil {
 		if api.lastEmail.Before(time.Now().Add(0 - time.Hour)) {
 			errorMail := api.SendMail("Tesla API not configured", "A call was made to StartCharging but the Tesla API is not configured.")

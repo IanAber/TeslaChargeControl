@@ -7,6 +7,7 @@ import (
 )
 
 const minAmps = 5
+const maxSystemAmps = 47.9
 
 // Params /**
 type Params struct {
@@ -15,6 +16,15 @@ type Params struct {
 	systemMax  float32   // Maximum amps the system can deliver
 	lastChange time.Time // Time the last change was made.
 	mu         sync.Mutex
+}
+
+// SetSystemAmps Set the maximum allowd charge current ceiling
+func (p *Params) SetSystemAmps(max float32) {
+	if max > maxSystemAmps {
+		p.systemMax = maxSystemAmps
+	} else {
+		p.systemMax = max
+	}
 }
 
 // GetMaxAmps Return the maximum charging current allowed /**
@@ -70,7 +80,7 @@ func (p *Params) Reset() {
 	p.mu.Unlock()
 	p.maxAmps = 25.0 // This will be the starting current when the car is frst plugged in nd charging starts.
 	p.lastChange = time.Now()
-	p.systemMax = 47.9 // This is the highest current we can supply to the car.
+	p.systemMax = maxSystemAmps // This is the highest current we can supply to the car.
 }
 
 // ChangeCurrent /**
@@ -83,8 +93,12 @@ func (p *Params) ChangeCurrent(delta int16) bool {
 	systemMax := int16(p.systemMax)
 
 	if delta > 0 {
-		// Going up...
+		// Going up... limit to 3A at a time
+		if delta > 3 {
+			delta = 3
+		}
 		if maxAmps >= systemMax {
+			log.Println("Tesla is at maximum amps allowed")
 			// We are already at the system maximum so do nothing
 			return false
 		}
@@ -98,11 +112,14 @@ func (p *Params) ChangeCurrent(delta int16) bool {
 			}
 			if maxAmps > systemMax {
 				// Don't go over the system maximum
+				log.Println("Limiting Tesla to", systemMax, "Amps")
 				maxAmps = systemMax
 			}
 			log.Println("Increasing Tesla current to", maxAmps, "Amps")
 			p.lastChange = time.Now()
 			p.maxAmps = float32(maxAmps)
+		} else {
+			log.Println("Reducing Tesla update times - last update", p.lastChange)
 		}
 	} else {
 		if maxAmps == 0 {

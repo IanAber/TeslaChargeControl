@@ -446,6 +446,7 @@ func handleCANFrame(frm can.Frame) {
 		iValues.SetVolts(c305.VBatt())
 		iValues.SetAmps(c305.IBatt())
 		iValues.SetSOC(c305.SocBatt())
+		API.AllowStart = (c305.IBatt() < -30)
 		//		log.Printf("V = %f, I = %f, DOC = %f\n", c305.VBatt(), c305.IBatt(), c305.SocBatt())
 
 	case 0x306: // Charge procedure, Operating state, Active error, Charge set point
@@ -649,12 +650,14 @@ func killHeaterOnDischarge() {
 // and the actual battery voltage
 func calculatePowerAvailable() {
 	//	var iBatt float32
-	var soc float32
+	//	var soc float32
 	//	var frequency float64
 	var delta int16
 	lastPowerState := 0
+	//	var step int16
 
 	for {
+
 		powerState := iValues.GetChargeLevel()
 		// If we get to a point where we are inside the ideal window before midday then preheat the electrolysers ready to produce hydrogen.
 		if powerState == 0 && lastPowerState == -1 {
@@ -671,77 +674,74 @@ func calculatePowerAvailable() {
 		}
 		TeslaParameters.SetCurrent(carCurrent)
 
-		//		fmt.Printf("soc = %f\nDelta = %f\nMaxDelta = %f\nMinDelta = %f\n", soc, vBattDelta, vBattDeltaMax, vBattDeltaMin)
-
-		//		fmt.Printf ("F = %0.2fHz : Cars = %0.2fA : available = %0.2fA : SOC = %0.2f%%: setpoint = %0.2fV : vBatt = %0.2fV", frequency, carCurrent, TeslaParameters.GetMaxAmps(), soc, vSetpoint, vBatt)
-
-		//		if (carCurrent > 5) && (Heater.GetSetting() > 0) && powerState < 0 {
-		//			// If the car is trying to charge, and the heater is on, and we need more power, turn the heater off
-		//			Heater.SetHeater(0)
-		//		}
 		if iValues.AutoGn {
 			// If the generator is running turn off the Tesla and the auxiliary heater
 			TeslaParameters.SetMaxAmps(0)
-			Electrolyser.Decrease(100)
+			Electrolyser.ChangeRate(-100)
 			if Heater.GetSetting() > 0 {
 				Heater.SetHeater(0)
 			}
 		} else if powerState == 1 { // If the delta is less than the minimum we can take more power
+			log.Println("Increasing consumption")
+			// Inverter current is at 48V so approx. 5 times car current. We should push it up in small stages
+			delta = 0 - int16(iValues.GetAmps()/10) // Charging shows as a negative inverter current
+			log.Println("Inverter current =", iValues.GetAmps(), "A - (negative = charging)")
+			if Electrolyser.currentSetting < 100 {
+				// If the electrolysers are running below 100% then limit the car to 20Amps
+				TeslaParameters.SetSystemAmps(20)
+			} else {
+				// Electrolysers are running at 100% so allow the car to run up to the full 48amps
+				TeslaParameters.SetSystemAmps(48)
+			}
+			log.Println("Tesla set to", TeslaParameters.GetMaxAmps(), "Amps Max.")
 			if carCurrent > 1 {
 				// Car is charging so try and increase the charge rate
-				delta = 0 - int16(int(iValues.GetAmps())/5)
-				//				delta = 1
+				log.Println("Change Tesla", delta, "A")
 				if !TeslaParameters.ChangeCurrent(delta) {
 					// Charge rate increase was not accepted so turn up the electrolyser
-					if !Electrolyser.Increase(5) {
+					log.Println("Increase Electrolyser ", delta, "%")
+					if !Electrolyser.ChangeRate(delta) {
 						Heater.Increase(iValues.GetFrequency())
-					}
-				} else {
-					// Tesla accepted the increase, so we should drop the heater a bit ignoring hold time setting
-					if !Heater.Decrease(true) {
-						Electrolyser.Decrease(10)
 					}
 				}
 			} else {
-
 				// No car charging requested so set the available current to 15.0 amps and turn up the auxiliary heater
+				log.Println("Tesla not charging to default to 15A and increase electrolyser")
 				TeslaParameters.SetMaxAmps(15.0)
-				if !Electrolyser.Increase(5) {
+				// If the frequency is over 60.9 the solar inverters are throttled so we should whack the electrolyser up to full immediately
+				if iValues.frequency > 60.9 {
+					delta = 100
+				}
+				if !Electrolyser.ChangeRate(delta) {
+					// Electrolyser did not increase so we should turn the heaters up.
+					log.Println("Electrolyser did not increase so increasing water heater")
 					Heater.Increase(iValues.GetFrequency())
 				}
 			}
 		} else if powerState == -1 { // If the delta is more than the max we need to reduce the load to give the battery chance to charge up
+			// Turn the water heat down first
+			log.Println("Reducing consumption")
 			if !Heater.Decrease(false) {
-				// if the heater is already off reduce the electrolyser output
-				if !Electrolyser.Decrease(5) {
-					// if the electrolysers are off and the car is charging then reduce the car charge rate
-					if carCurrent > 1 {
-						// If we are not discharging and the car is not charging at 6 amps or above then leave it alone
-						if (iValues.GetAmps() > 1) || (carCurrent > 6) {
-							// If the state of charge is 95% or more don't let the car current fall below 8 amps
-							if (soc < 95.0) || (carCurrent > 8) {
-								switch {
-								case iValues.GetAmps() > 35:
-									TeslaParameters.ChangeCurrent(0 - int16(iValues.GetAmps()/7))
-								case carCurrent > 30.0:
-									TeslaParameters.ChangeCurrent(-3)
-								case carCurrent > 20.0:
-									TeslaParameters.ChangeCurrent(-2)
-								default:
-									TeslaParameters.ChangeCurrent(-1)
-								}
-							}
-						}
-					}
+				delta = 0 - int16(iValues.GetAmps()/5) // Inverter current is at 48V so 5 times the 240 car current
+				// Delta is negative here
+				log.Println("Inverter current =", iValues.GetAmps(), "A Discharging - Delta set to", delta)
+				// if the heater is already off and the Tesla is above 20A then reduce the Tesla
+				if carCurrent > 20 {
+					// Drop the car current
+					log.Println("Car > 20A so change it", delta, "A")
+					TeslaParameters.ChangeCurrent(delta)
 				} else {
-					// Even if we think we dropped the electrolyser rte we should still drop the Tesl rate
-					if Electrolyser.requestedSetting != Electrolyser.currentSetting && carCurrent > 6 {
-						TeslaParameters.ChangeCurrent(-5)
+					// Car is not above 20A so derease the Electrolysers first
+					log.Println("Car < 20A so changing Electrolysers", delta, "%")
+					if !Electrolyser.ChangeRate(delta) {
+						// Electrolyser did not decrease, perhaps because it is already zero, so drop the car rate
+						log.Println("Electrolyser is 0 so changing the Tesla ", delta, "A")
+						TeslaParameters.ChangeCurrent(delta)
 					}
 				}
 			}
 		}
-		time.Sleep(time.Second * 15)
+		time.Sleep(time.Second * 2)
 	}
 }
 

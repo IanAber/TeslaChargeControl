@@ -208,7 +208,7 @@ func (slave *Slave) SendMasterHeartbeat(masterAddress uint16, api *TeslaAPI.Tesl
 			if slave.stopped {
 				slave.disabled = false
 				if time.Since(slave.timeSetTo0Amps) > (time.Minute * 4) {
-					if !api.APIDisabled {
+					if !api.APIDisabled && slave.current < 1 {
 						go func() {
 							err := api.StartCharging()
 							if err != nil {
