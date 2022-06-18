@@ -518,7 +518,7 @@ func connectToDatabase() (*sql.DB, error) {
 	}
 	var sConnectionString = databaseLogin + ":" + databasePassword + "@tcp(" + databaseServer + ":" + databasePort + ")/" + databaseName
 
-	fmt.Println("Connecting to [", sConnectionString, "]")
+	log.Println("Connecting to [", sConnectionString, "]")
 	db, err := sql.Open("mysql", sConnectionString)
 	if err != nil {
 		return nil, err
@@ -682,10 +682,10 @@ func calculatePowerAvailable() {
 				Heater.SetHeater(0)
 			}
 		} else if powerState == 1 { // If the delta is less than the minimum we can take more power
-			log.Println("Increasing consumption")
+			//			log.Println("Increasing consumption")
 			// Inverter current is at 48V so approx. 5 times car current. We should push it up in small stages
 			delta = 0 - int16(iValues.GetAmps()/10) // Charging shows as a negative inverter current
-			log.Println("Inverter current =", iValues.GetAmps(), "A - (negative = charging)")
+			//			log.Println("Inverter current =", iValues.GetAmps(), "A - (negative = charging)")
 			if Electrolyser.currentSetting < 100 {
 				// If the electrolysers are running below 100% then limit the car to 20Amps
 				TeslaParameters.SetSystemAmps(20)
@@ -693,20 +693,20 @@ func calculatePowerAvailable() {
 				// Electrolysers are running at 100% so allow the car to run up to the full 48amps
 				TeslaParameters.SetSystemAmps(48)
 			}
-			log.Println("Tesla set to", TeslaParameters.GetMaxAmps(), "Amps Max.")
+			//			log.Println("Tesla set to", TeslaParameters.GetMaxAmps(), "Amps Max.")
 			if carCurrent > 1 {
 				// Car is charging so try and increase the charge rate
-				log.Println("Change Tesla", delta, "A")
+				//				log.Println("Change Tesla", delta, "A")
 				if !TeslaParameters.ChangeCurrent(delta) {
 					// Charge rate increase was not accepted so turn up the electrolyser
-					log.Println("Increase Electrolyser ", delta, "%")
+					//					log.Println("Increase Electrolyser ", delta, "%")
 					if !Electrolyser.ChangeRate(delta) {
 						Heater.Increase(iValues.GetFrequency())
 					}
 				}
 			} else {
 				// No car charging requested so set the available current to 15.0 amps and turn up the auxiliary heater
-				log.Println("Tesla not charging to default to 15A and increase electrolyser")
+				//				log.Println("Tesla not charging to default to 15A and increase electrolyser")
 				TeslaParameters.SetMaxAmps(15.0)
 				// If the frequency is over 60.9 the solar inverters are throttled so we should whack the electrolyser up to full immediately
 				if iValues.frequency > 60.9 {
@@ -714,28 +714,28 @@ func calculatePowerAvailable() {
 				}
 				if !Electrolyser.ChangeRate(delta) {
 					// Electrolyser did not increase so we should turn the heaters up.
-					log.Println("Electrolyser did not increase so increasing water heater")
+					//					log.Println("Electrolyser did not increase so increasing water heater")
 					Heater.Increase(iValues.GetFrequency())
 				}
 			}
 		} else if powerState == -1 { // If the delta is more than the max we need to reduce the load to give the battery chance to charge up
 			// Turn the water heat down first
-			log.Println("Reducing consumption")
+			//			log.Println("Reducing consumption")
 			if !Heater.Decrease(false) {
 				delta = 0 - int16(iValues.GetAmps()/5) // Inverter current is at 48V so 5 times the 240 car current
 				// Delta is negative here
-				log.Println("Inverter current =", iValues.GetAmps(), "A Discharging - Delta set to", delta)
+				//				log.Println("Inverter current =", iValues.GetAmps(), "A Discharging - Delta set to", delta)
 				// if the heater is already off and the Tesla is above 20A then reduce the Tesla
 				if carCurrent > 20 {
 					// Drop the car current
-					log.Println("Car > 20A so change it", delta, "A")
+					//					log.Println("Car > 20A so change it", delta, "A")
 					TeslaParameters.ChangeCurrent(delta)
 				} else {
 					// Car is not above 20A so derease the Electrolysers first
-					log.Println("Car < 20A so changing Electrolysers", delta, "%")
+					//					log.Println("Car < 20A so changing Electrolysers", delta, "%")
 					if !Electrolyser.ChangeRate(delta) {
 						// Electrolyser did not decrease, perhaps because it is already zero, so drop the car rate
-						log.Println("Electrolyser is 0 so changing the Tesla ", delta, "A")
+						//						log.Println("Electrolyser is 0 so changing the Tesla ", delta, "A")
 						TeslaParameters.ChangeCurrent(delta)
 					}
 				}
@@ -764,7 +764,8 @@ func logToDatabase() {
 	var err error
 	hotTankTemp := int16(1000)
 
-	for {
+	loggingTicker := time.NewTicker(time.Second)
+	for range loggingTicker.C {
 		newFrequency := iValues.GetFrequency()
 		newVsetpoint := iValues.GetSetPoint()
 		newVbatt := iValues.GetVolts()
@@ -780,7 +781,6 @@ func logToDatabase() {
 			if err != nil {
 				log.Println("Error opening the database ", err)
 				pDB = nil
-				time.Sleep(time.Second)
 				continue
 			}
 		}
@@ -796,7 +796,6 @@ func logToDatabase() {
 				log.Printf("Error writing inverter values to the database - %s", err)
 				_ = pDB.Close()
 				pDB = nil
-				time.Sleep(time.Second)
 				continue
 			}
 		}
@@ -808,7 +807,6 @@ func logToDatabase() {
 				log.Printf("Error writing Tesla values to the database - %s", err)
 				_ = pDB.Close()
 				pDB = nil
-				time.Sleep(time.Second)
 				continue
 			}
 		}
@@ -821,7 +819,6 @@ func logToDatabase() {
 				log.Printf("Error writing heater values to the database - %s", err)
 				_ = pDB.Close()
 				pDB = nil
-				time.Sleep(time.Second)
 				continue
 			}
 		}
@@ -829,14 +826,100 @@ func logToDatabase() {
 		var err = pDB.QueryRow("select greatest(`TSH0`, `TSH1`, `TSH2`) as maxtemp from `chillii_analogue_input` where `TIMESTAMP` > date_add(now(), interval -5 minute) order by `TIMESTAMP` desc limit 1;").Scan(&hotTankTemp)
 		if err != nil {
 			Heater.SetHotTankTemp(1000) // Be safe. If we can't get the temperature assume it is boiling to shut down the heater.
-			log.Printf("Error fetching hot tank temperature from the database - %s", err)
-			err = pDB.Close()
-			pDB = nil
-			time.Sleep(time.Second)
-			continue
+			if err != sql.ErrNoRows {
+				log.Printf("Error fetching hot tank temperature from the database - %s", err)
+				err = pDB.Close()
+				pDB = nil
+				continue
+			}
 		}
 		Heater.SetHotTankTemp(hotTankTemp)
-		time.Sleep(time.Second)
+	}
+}
+
+func GetTemperatures() {
+	log.Println("GetTemperatures...")
+	var temperatures struct {
+		TSOC_1 int16
+		TSOPI  int16
+		TSOPO  int16
+		TSH0   int16
+		TSH1   int16
+		TSH2   int16
+
+		TSC0 int16
+		TSC1 int16
+		TSC2 int16
+		TOU  int16
+		TSOS int16
+		TIN1 int16
+
+		TCHCI1 int16
+		TCHCO1 int16
+		TCHEI1 int16
+		TCHEO1 int16
+		TCHGI1 int16
+		TCHGO1 int16
+	}
+	esp1 := NewESPTemperature("http://ESPTEMP1.home")
+	esp2 := NewESPTemperature("http://ESPTEMP2.home")
+	esp3 := NewESPTemperature("http://ESPTEMP3.home")
+	go esp1.readTemperatures()
+	go esp2.readTemperatures()
+	go esp3.readTemperatures()
+
+	tempTicker := time.NewTicker(time.Second * 15)
+	for range tempTicker.C {
+		temps := esp1.getTemperatures()
+		temperatures.TSOC_1 = int16(temps[0] * 10)
+		temperatures.TSOPI = int16(temps[1] * 10)
+		temperatures.TSOPO = int16(temps[2] * 10)
+		temperatures.TSH0 = int16(temps[3] * 10)
+		temperatures.TSH1 = int16(temps[4] * 10)
+		temperatures.TSH2 = int16(temps[5] * 10)
+
+		temps = esp2.getTemperatures()
+		temperatures.TSC0 = int16(temps[0] * 10)
+		temperatures.TSC1 = int16(temps[1] * 10)
+		temperatures.TSC2 = int16(temps[2] * 10)
+		temperatures.TOU = int16(temps[3] * 10)
+		temperatures.TSOS = int16(temps[4] * 10)
+		temperatures.TIN1 = int16(temps[5] * 10)
+
+		temps = esp3.getTemperatures()
+		temperatures.TCHCI1 = int16(temps[0] * 10)
+		temperatures.TCHCO1 = int16(temps[1] * 10)
+		temperatures.TCHEI1 = int16(temps[2] * 10)
+		temperatures.TCHEO1 = int16(temps[3] * 10)
+		temperatures.TCHGI1 = int16(temps[4] * 10)
+		temperatures.TCHGO1 = int16(temps[5] * 10)
+
+		if _, err := pDB.Exec(`INSERT INTO logging.chillii_analogue_input (TIMESTAMP, TSOC_1, TSOPI, TSOPO, TSH0, TSH1, TSH2,
+		                                   TSC0, TSC1, TSC2, TOU, TSOS, TIN_1,
+		                                   TCHCI_1, TCHCO_1, TCHEI_1, TCHEO_1, TCHGI_1, TCHGO_1)
+										VALUES (CURRENT_TIMESTAMP, ?,?,?,?,?,?,
+										        ?,?,?,?,?,?,
+										        ?,?,?,?,?,?)`,
+			temperatures.TSOC_1, temperatures.TSOPI, temperatures.TSOPO, temperatures.TSH0, temperatures.TSH1, temperatures.TSH2,
+			temperatures.TSC0, temperatures.TSC1, temperatures.TSC2, temperatures.TOU, temperatures.TSOS, temperatures.TIN1,
+			temperatures.TCHCI1, temperatures.TCHCO1, temperatures.TCHEI1, temperatures.TCHEO1, temperatures.TCHGI1, temperatures.TCHGO1); err != nil {
+			log.Print(err)
+		}
+		go esp1.readTemperatures()
+		go esp2.readTemperatures()
+		go esp3.readTemperatures()
+	}
+}
+
+func LogPumps() {
+	pumpTicker := time.NewTicker(time.Second * 10)
+
+	for range pumpTicker.C {
+		if pDB != nil {
+			if _, err := pDB.Exec("INSERT INTO logging.chillii_analogue_output (`timestamp`, PSOP, PSOP_AO, PSOS, PSOS_AO, PHS, PHS_AO, PSW, PSWZ, PC_1, PC_1_A0, PC_2, PC_2_A0, PC_3, PC_3_A0, PC_4, PC_4_A0, PCHG_1, PCHG_1_A0, PCHE_1, PCHE_1_A0, PCHCP_1, PCHCP_1_A0, PCHCS_1, PCHCS_1_A0)VALUES(CURRENT_TIMESTAMP, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0)"); err != nil {
+				log.Print(err)
+			}
+		}
 	}
 }
 
@@ -866,6 +949,10 @@ func main() {
 	go killHeaterOnDischarge()
 
 	go logToDatabase()
+
+	go GetTemperatures()
+
+	go LogPumps()
 
 	for {
 		if time.Since(t) > time.Second {

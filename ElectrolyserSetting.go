@@ -264,10 +264,10 @@ func (e *ElectrolyserSetting) ReadSetting() {
 	e.currentSetting = Rate.Rate
 	e.gasPressure = Rate.Pressure
 	e.status = Rate.Status
-	log.Printf("Electrolyser returned gas=%f : setting=%d expected %d : status=%s\n", e.gasPressure, e.currentSetting, e.requestedSetting, e.status)
+	//	log.Printf("Electrolyser returned gas=%f : setting=%d expected %d : status=%s\n", e.gasPressure, e.currentSetting, e.requestedSetting, e.status)
 	// This was not what we expected so update it if it is more than 5% out.
 	if Int16Abs(e.currentSetting-e.requestedSetting) > 5 {
-		log.Println("Adjusting...")
+		//		log.Println("Adjusting...")
 		e.setElectrolyser()
 	}
 }
