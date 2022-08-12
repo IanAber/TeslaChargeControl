@@ -21,6 +21,12 @@ type ESPTemperature struct {
 	mu           sync.Mutex
 }
 
+type newValues struct {
+	Ambient      float32    `json:"temperature"`
+	Humidity     float32    `json:"humidity"`
+	Temperatures [6]float32 `json:"rtd"`
+}
+
 func NewESPTemperature(url string) *ESPTemperature {
 	esp := new(ESPTemperature)
 	esp.url = url
@@ -28,6 +34,7 @@ func NewESPTemperature(url string) *ESPTemperature {
 }
 
 func (esp *ESPTemperature) readTemperatures() {
+	var values newValues
 	if resp, err := http.Get(esp.url + "/ajax/climate"); err != nil {
 		esp.LastError = err
 		log.Println(err)
@@ -40,13 +47,38 @@ func (esp *ESPTemperature) readTemperatures() {
 		} else {
 			esp.mu.Lock()
 			defer esp.mu.Unlock()
-			if err := json.Unmarshal(bytes, &esp); err != nil {
+			if err := json.Unmarshal(bytes, &values); err != nil {
 				esp.LastError = err
 				log.Println(err)
 				return
 			} else {
-				esp.LastUpdate = time.Now()
-				esp.Updated = true
+				errValue := false
+				if values.Ambient < 200 && values.Ambient > -50 {
+					esp.Ambient = values.Ambient
+				} else {
+					errValue = true
+				}
+				if values.Humidity <= 100 && values.Humidity >= 0 {
+					esp.Humidity = values.Humidity
+				} else {
+					errValue = true
+				}
+				for t := 0; t < 6; t++ {
+					if values.Temperatures[t] < 200 && values.Temperatures[t] > -50 {
+						esp.Temperatures[t] = values.Temperatures[t]
+					} else {
+						errValue = true
+					}
+				}
+				if !errValue {
+					esp.LastUpdate = time.Now()
+					esp.Updated = true
+				} else {
+					log.Printf("Bad temperatures from %s - ambient = %f:%f | temps =%f:%f:%f:%f:%f:%f\n",
+						esp.url, values.Ambient, values.Humidity,
+						values.Temperatures[0], values.Temperatures[1], values.Temperatures[2],
+						values.Temperatures[3], values.Temperatures[4], values.Temperatures[5])
+				}
 			}
 		}
 	}

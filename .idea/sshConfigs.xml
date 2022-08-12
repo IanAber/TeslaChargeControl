@@ -2,7 +2,7 @@
 <project version="4">
   <component name="SshConfigs">
     <configs>
-      <sshConfig connectionConfig="{&quot;serverAliveInterval&quot;:300}" host="aberhome1.home" id="58426fb4-d2fd-4317-892f-5626a207ccd5" keyPath="$USER_HOME$/.ssh/id_rsa" port="22" customName="AberHome" nameFormat="CUSTOM" username="pi" useOpenSSHConfig="true">
+      <sshConfig authType="PASSWORD" connectionConfig="{&quot;serverAliveInterval&quot;:300}" host="aberhome1.local" id="58426fb4-d2fd-4317-892f-5626a207ccd5" port="22" customName="AberHome" nameFormat="CUSTOM" username="pi" useOpenSSHConfig="true">
         <option name="customName" value="AberHome" />
       </sshConfig>
     </configs>

@@ -212,7 +212,9 @@ func (slave *Slave) SendMasterHeartbeat(masterAddress uint16, api *TeslaAPI.Tesl
 						go func() {
 							err := api.StartCharging()
 							if err != nil {
-								log.Println("Failed to call StartCharging in the Tesla API.", err)
+								if err.Error() != "TeslaAPI Failed! - is_charging" {
+									log.Println("Failed to call StartCharging in the Tesla API.", err)
+								}
 							}
 						}()
 					} else {

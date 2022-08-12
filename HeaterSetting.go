@@ -3,6 +3,7 @@ package main
 import (
 	"github.com/golang/glog"
 	"github.com/stianeikeland/go-rpio"
+	"log"
 	"math"
 	"sync"
 	"time"
@@ -11,18 +12,22 @@ import (
 /****************************************************************************************
 * GPIO outputs are:-
 *
-* Pin	Function
+* https://pinout.xyz/pinout/wiringpi
+*
+* Wiring Pi	GPIO 	PIN	Function
 *-------------------
-*  0	Fan							(17)
-*  1	PWM output for Solar Pump
-*  2	AC enable					(27)
-*  3	6kW heater element (high)
-*  4	Pump Enable					(23)
-*  5	2.5kW heater element (med)
+*  0		17		11	Fan
+*  1		18		12	PWM output for Solar Pump
+*  2		27		13	AC enable
+*  3		22		15	6kW heater element (high)
+*  4		23		16	Pump Enable
+*  22		 6		31	1.5kW heater  element (low)
+*  5		24		18	2.5kW Medium
 ****************************************************************************************/
 
 const pump = 23        // Pump is on GPIO 4
 const maxHotTemp = 920 // Maximum hot tank temperature in 10ths of a degree Celcius
+const solarPump = 18
 
 // Array of heater SSR port pins in order of least powerful to most powerful
 var heaters = [...]uint8{6, 24, 22}
@@ -38,7 +43,22 @@ type HeaterSetting struct {
 	dontDecreaseBefore time.Time // This is used to hold off a decrease to give the string inverters a chance to ramp up
 	dontIncreaseBefore time.Time // This is used to prevent an increase if we have just increased within a short time
 	// to stop running up to quickly.
-	hotTankTemp int16 // Hot tank temperature (Deg C x 10) Max allowed = 95C (950)
+	hotTankTemp        int16     // Hot tank temperature (Deg C x 10) Max allowed = 95C (950)
+	solarPumpSetting   uint8     // Duty cycle percentage of the solar pump
+	solarPumpStartTime time.Time // When was the pump started
+	solarMinimumSpeed  uint8     // When the speed drops below this the pump is stopped
+	solarStartSeconds  uint      // Minimum number of seconds between starting up at full speed and slowing of the pump is allowed
+}
+
+func init() {
+	if err := rpio.Open(); err != nil {
+		glog.Errorf("Failed to open the GPIO ports. - %s\n", err)
+	}
+	// StartPWM starts the pulse width modulation on the solar pump
+	p := rpio.Pin(solarPump)
+	p.Mode(rpio.Pwm)
+	p.Freq(100000) // 100kHz
+	p.DutyCycle(0, 100)
 }
 
 func NewHeaterSetting() *HeaterSetting {
@@ -49,6 +69,10 @@ func NewHeaterSetting() *HeaterSetting {
 	h.maxSetting = uint8(math.Pow(2, float64(len(heaters)))) - 1
 	h.dontDecreaseBefore = time.Now()
 	h.dontIncreaseBefore = time.Now()
+	h.solarPumpSetting = 0
+	h.solarMinimumSpeed = 20
+	h.solarPumpStartTime = time.Now()
+	h.solarStartSeconds = 30
 	return h
 }
 
@@ -171,11 +195,6 @@ func (h *HeaterSetting) Decrease(ignoreTime bool) bool {
 
 // Internal function to drive the port pins controlling the Solid state Relays
 func (h *HeaterSetting) setHeater() {
-	err := rpio.Open()
-	if err != nil {
-		glog.Errorf("Failed to open the GPIO ports. - %s\n", err)
-		return
-	}
 	for i, p := range heaters {
 		val := ((h.currentSetting >> uint(i)) & 1) > 0
 		pin := rpio.Pin(p)
@@ -221,4 +240,67 @@ func (h *HeaterSetting) SetHotTankTemp(t int16) {
 func (h *HeaterSetting) GetPump() bool {
 	pin := rpio.Pin(pump)
 	return pin.Read() == 0
+}
+
+func (h *HeaterSetting) SetSolarPumpSpeed(speed uint8) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	p := rpio.Pin(solarPump)
+	if speed > 100 {
+		log.Print("Maximum pump speed is 100. Requested speed is", speed)
+	}
+	p.DutyCycle(uint32(speed), 100)
+	h.solarPumpSetting = speed
+}
+
+func (h *HeaterSetting) IncreasePump() {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+
+	//	log.Println("Increase Solar Pump")
+
+	p := rpio.Pin(solarPump)
+	if h.solarPumpSetting < 100 {
+		if h.solarPumpSetting == 0 {
+			h.solarPumpStartTime = time.Now()
+			h.solarPumpSetting = 100
+		} else {
+			h.solarPumpSetting++
+		}
+		p.DutyCycle(uint32(h.solarPumpSetting), 100)
+		//		log.Println("Solar pump increased to ", h.solarPumpSetting)
+	}
+}
+
+func (h *HeaterSetting) DecreasePump() {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	p := rpio.Pin(solarPump)
+
+	//	log.Println("Decrease Solar Pump")
+
+	// Check we are running
+	if h.solarPumpSetting > 0 {
+		// If we are outside the startup window
+		if h.solarPumpStartTime.Add(time.Second * (time.Duration(h.solarStartSeconds))).Before(time.Now()) {
+			if h.solarPumpSetting > h.solarMinimumSpeed {
+				// If we are above the minimum speed reduce it
+				h.solarPumpSetting--
+				p.DutyCycle(uint32(h.solarPumpSetting), 100)
+
+				//				log.Println("Solar pump decreased to ", h.solarPumpSetting)
+
+			} else {
+				// If we are at the minimum speed stop the pump
+				h.solarPumpSetting = 0
+				p.DutyCycle(0, 100)
+
+				//				log.Println("Solar pump stopped")
+			}
+		}
+	}
+}
+
+func (h *HeaterSetting) GetSolarPump() uint8 {
+	return h.solarPumpSetting
 }

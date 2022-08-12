@@ -7,21 +7,17 @@ import (
 	"SystemController/twcSlave"
 	_ "crypto/aes"
 	"database/sql"
-	"encoding/json"
 	"flag"
 	"fmt"
 	"github.com/IanAber/SMACanMessages"
 	"log"
-	"net/http"
 	"os"
-	"path/filepath"
 	"runtime"
 	"time"
 
 	"github.com/brutella/can"
 	_ "github.com/go-sql-driver/mysql"
 	"github.com/goburrow/serial"
-	"github.com/gorilla/mux"
 )
 
 // Version 2 makes parameters editable via the WEB interface
@@ -51,6 +47,10 @@ var (
 	slaves           []twcSlave.Slave
 	pDB              *sql.DB
 	API              *TeslaAPI.TeslaAPI
+	SolarProduction  struct {
+		power  float32
+		logged time.Time
+	}
 )
 
 func findSlave(slaves []twcSlave.Slave, address uint16) int {
@@ -146,299 +146,6 @@ func divideMaxAmpsAmongstSlaves(slaves []twcSlave.Slave, maxAmps uint16) {
 	}
 }
 
-func mailForm(w http.ResponseWriter, r *http.Request) {
-	if r.Method != "POST" {
-		_, err := fmt.Fprintf(w, `<html><head><title>Email Tester</title></head><body>`)
-		if err != nil {
-			log.Println(err)
-		}
-	}
-	_, err := fmt.Fprintf(w, `<br/>Send email to Ian@CedarTechnology.com<br/>
-			<form action="/mail" method="post">
-				<label for="subject">Subject :</label><input name="subject" id="subject" value="%s" style="width:300px;border:solid 1px" /><br/>
-				<label for="body">Body :</label><textarea name="body" id="body" rows="25" cols="80">%s</textarea><br />
-				<input type="submit" value="Send">
-			</form>
-		</body>
-	</html>`, r.Form.Get("subject"), r.Form.Get("body"))
-	if err != nil {
-		log.Println(err)
-	}
-}
-
-func sendMail(w http.ResponseWriter, r *http.Request) {
-	if API == nil {
-		log.Println("Cannot send mail. Tesla API is null.")
-	}
-	err := r.ParseForm()
-	if err != nil {
-		_, errFmt := fmt.Fprintf(w, err.Error())
-		if errFmt != nil {
-			log.Println(errFmt)
-		}
-		return
-	}
-	log.Println("Sending mail to ian.")
-	err = API.SendMail(r.Form.Get("subject"), r.Form.Get("body"))
-	if err != nil {
-		_, errFmt := fmt.Fprintf(w, "<html><head><title>Send Email Error</title></head><body><h1>%s</h1><br/>", err.Error())
-		if errFmt != nil {
-			log.Println(errFmt)
-		}
-	} else {
-		_, errFmt := fmt.Fprintf(w, "<html><head><title>Sent</title></head><body><h1>Message Sent!</h1><br/")
-		if errFmt != nil {
-			log.Println(errFmt)
-		}
-	}
-	mailForm(w, r)
-}
-
-func ServeSetTeslaTokens(w http.ResponseWriter, r *http.Request) {
-	if API == nil {
-		log.Println("API is nil")
-	}
-	API.HandleSetTeslaTokens(w, r)
-}
-
-func ServeGetTeslaTokens(w http.ResponseWriter, r *http.Request) {
-	if API == nil {
-		_, errFmt := fmt.Println("API is nil")
-		if errFmt != nil {
-			log.Println(errFmt)
-		}
-	}
-	API.ShowGetTokensPage(w, r)
-}
-
-type neuteredFileSystem struct {
-	fs http.FileSystem
-}
-
-func (nfs neuteredFileSystem) Open(path string) (http.File, error) {
-	f, err := nfs.fs.Open(path)
-	if err != nil {
-		return nil, err
-	}
-
-	s, err := f.Stat()
-	if s.IsDir() {
-		index := filepath.Join(path, "index.html")
-		if _, err := nfs.fs.Open(index); err != nil {
-			closeErr := f.Close()
-			if closeErr != nil {
-				return nil, closeErr
-			}
-
-			return nil, err
-		}
-	}
-
-	return f, nil
-}
-
-func setUpWebSite() {
-	router := mux.NewRouter().StrictSlash(true)
-	router.HandleFunc("/", getValues).Methods("GET")
-	router.HandleFunc("/getTeslaKeys", ServeGetTeslaTokens).Methods("GET")
-	router.HandleFunc("/setTeslaKeys", ServeSetTeslaTokens).Methods("POST")
-	router.HandleFunc("/disableHeater", disableHeater).Methods("GET")
-	router.HandleFunc("/enableHeater", enableHeater).Methods("GET")
-	router.HandleFunc("/reloadChargingFunction", reloadChargingFunction).Methods("GET")
-	router.HandleFunc("/version", getVersion).Methods("GET")
-	router.HandleFunc("/enableLogging", enableLogging).Methods("GET")
-	router.HandleFunc("/disableLogging", disableLogging).Methods("GET")
-	router.HandleFunc("/waterTemps", getWaterTemps).Methods("GET")
-	router.HandleFunc("/mail", sendMail).Methods("POST")
-	router.HandleFunc("/mail", mailForm).Methods("GET")
-	router.HandleFunc("/startCharging", handleStartCharging)
-	router.HandleFunc("/stopCharging", handleStopCharging)
-	router.HandleFunc("/enableElectrolyser", enableElectrolyser).Methods("GET", "POST")
-	router.HandleFunc("/disableElectrolyser", disableElectrolyser).Methods("GET", "POST")
-
-	fileServer := http.FileServer(neuteredFileSystem{http.Dir("./web")})
-	router.PathPrefix("/").Handler(http.StripPrefix("/", fileServer))
-
-	log.Fatal(http.ListenAndServe(":8080", router))
-}
-
-func handleStartCharging(w http.ResponseWriter, _ *http.Request) {
-	err := API.StartCharging()
-	if err == nil {
-		_, errFmt := fmt.Fprint(w, "<html><head><title>Tesla Control</title></head><body><h1>Charging started</h1>", CHARGINGLINKS, "</body></html>")
-		if errFmt != nil {
-			log.Println(errFmt)
-		}
-	} else {
-		_, errFmt := fmt.Fprint(w, "<html><head><title>Tesla Control</title></head><body><h1>Charging failed to start</h1><br />", err.Error(), "<br />", CHARGINGLINKS, "</body></html>")
-		if errFmt != nil {
-			log.Println(errFmt)
-		}
-	}
-}
-
-func handleStopCharging(w http.ResponseWriter, _ *http.Request) {
-	err := API.StopCharging()
-	if err == nil {
-		_, errFmt := fmt.Fprint(w, "<html><head><title>Tesla Control</title></head><body><h1>Charging stopped</h1>", CHARGINGLINKS, "</body></html>")
-		if errFmt != nil {
-			log.Println(errFmt)
-		}
-	} else {
-		_, errFmt := fmt.Fprint(w, "<html><head><title>Tesla Control</title></head><body><h1>Charging failed to stop</h1><br />", err.Error(), "<br />", CHARGINGLINKS, "</body></html>")
-		if errFmt != nil {
-			log.Println(errFmt)
-		}
-	}
-}
-
-func getWaterTemps(w http.ResponseWriter, _ *http.Request) {
-	// Get the hot tank temperature
-	var temps struct {
-		Hot  float32 `json:"hot"`
-		Cold float32 `json:"cold"`
-	}
-	var err = pDB.QueryRow("select greatest(`TSH0`, `TSH1`, `TSH2`) / 10 as `hotTemp`, least(`TSC0`, `TSC1`, `TSC2`) / 10 as `coldTemp` from `chillii_analogue_input` where `TIMESTAMP` > date_add(now(), interval -5 minute) order by `TIMESTAMP` desc limit 1;").Scan(&temps.Hot, &temps.Cold)
-	if err != nil {
-		http.Error(w, "Failed to get the hot tank temperatures.", http.StatusInternalServerError)
-		log.Printf("Error fetching tank temperatures from the database - %s", err)
-		return
-	}
-	str, err := json.Marshal(temps)
-	if err != nil {
-		http.Error(w, "Failed to marshal the tempratures into a JSON object", http.StatusInternalServerError)
-		log.Printf("Error marshalling tank temperatures - %s", err)
-		return
-	}
-	_, err = fmt.Fprint(w, string(str))
-	if err != nil {
-		log.Println("getWaterTemps() - ", err)
-	}
-}
-
-func enableLogging(w http.ResponseWriter, r *http.Request) {
-	iValues.Log = true
-	getValues(w, r)
-}
-
-func disableLogging(w http.ResponseWriter, r *http.Request) {
-	iValues.Log = false
-	getValues(w, r)
-}
-
-func enableHeater(w http.ResponseWriter, r *http.Request) {
-	Heater.SetEnabled(true)
-	getValues(w, r)
-}
-
-func disableHeater(w http.ResponseWriter, r *http.Request) {
-	Heater.SetEnabled(false)
-	Heater.SetHeater(0)
-	getValues(w, r)
-}
-
-func enableElectrolyser(w http.ResponseWriter, r *http.Request) {
-	Electrolyser.SetEnabled(true)
-	getValues(w, r)
-}
-
-func disableElectrolyser(w http.ResponseWriter, r *http.Request) {
-	Electrolyser.SetEnabled(false)
-	getValues(w, r)
-}
-
-func reloadChargingFunction(w http.ResponseWriter, _ *http.Request) {
-	err := iValues.LoadFunctionConstants("/var/www/html/params/charge_params.json")
-	if err != nil {
-		log.Println(err)
-	}
-	w.Header().Set("Access-Control-Allow-Origin", "*")
-	jsonData, err := json.Marshal(iValues.GetQuinticFunction())
-	if err != nil {
-		log.Println(err)
-	} else {
-		_, err = w.Write(jsonData)
-		if err != nil {
-			log.Println(err)
-		}
-	}
-}
-
-func getVersion(w http.ResponseWriter, _ *http.Request) {
-	w.Header().Set("Access-Control-Allow-Origin", "*")
-	_, err := fmt.Fprint(w, `<html>
-  <head>
-    <Cedar Technology System Manager>
-  </head>
-  <body>
-    <h1>Cedar Technology System Manager</h1>
-    <h2>Version 2.0 - October 29th 2019</h2>
-  </body>
-</html>`)
-	if err != nil {
-		log.Println(err)
-	}
-}
-
-// getValues /*
-// Return a set of values as a JSON object for consumption by a WEB page dashboard.
-func getValues(w http.ResponseWriter, _ *http.Request) {
-	_, fMaxAmps := TeslaParameters.GetValues()
-	var sPump string
-
-	w.Header().Set("Access-Control-Allow-Origin", "*")
-	if Heater.GetPump() {
-		sPump = "ON"
-	} else {
-		sPump = "OFF"
-	}
-	_, _ = fmt.Fprintf(w, `{
-	"time":"%s",
-	"tesla":{
-		"maxAmps":%02f,
-		"cars":[`, time.Now().String(), fMaxAmps)
-	for i := range slaves {
-		if i > 0 {
-			_, _ = fmt.Fprint(w, ',')
-		}
-		stopped := ""
-		if slaves[i].GetStopped() {
-			stopped = " stopped"
-		}
-		_, _ = fmt.Fprintf(w, `
-			{
-				"Current":%0.2f,
-				"maxAmps":%0.2f,
-				"status":"%s%s"
-			}`, float32(slaves[i].GetCurrent())/100, float32(slaves[i].GetAllowed())/100, slaves[i].GetStatus(), stopped)
-	}
-	_, _ = fmt.Fprintf(w, `
-		]},
-	"electrolyser":{
-		"enabled":%t,
-		"level":%d
-	},
-	"heater":{
-		"setting":%d,
-		"pump":"%s",
-		"enabled":"%s"
-	},
-	"inverter":{
-		"frequency":%0.2f,
-		"vSetpoint":%0.2f,
-		"vBatt":%0.2f,
-		"iBatt":%0.2f,
-		"soc":%0.2f,
-		"vBattDeltaMin":%0.2f,
-		"vBattDeltaMax":%0.2f,
-%s
-	}
-}`, Electrolyser.IsEnabled(), Electrolyser.GetRate(),
-		Heater.GetSetting(), sPump, Heater.GetEnabled(), iValues.GetFrequency(), iValues.GetSetPoint(),
-		iValues.GetVolts(), iValues.GetAmps(), iValues.GetSOC(),
-		iValues.GetVBattDeltaMin(), iValues.GetVBattDeltaMax(), iValues.GetFlags())
-}
-
 func handleCANFrame(frm can.Frame) {
 	switch frm.ID {
 	case 0x305: // Battery voltage, current and state of charge
@@ -446,7 +153,7 @@ func handleCANFrame(frm can.Frame) {
 		iValues.SetVolts(c305.VBatt())
 		iValues.SetAmps(c305.IBatt())
 		iValues.SetSOC(c305.SocBatt())
-		API.AllowStart = (c305.IBatt() < -30)
+		API.AllowStart = c305.IBatt() < -30
 		//		log.Printf("V = %f, I = %f, DOC = %f\n", c305.VBatt(), c305.IBatt(), c305.SocBatt())
 
 	case 0x306: // Charge procedure, Operating state, Active error, Charge set point
@@ -499,6 +206,7 @@ func handleCANFrame(frm can.Frame) {
 func processCANFrames() {
 	bus, err := can.NewBusForInterfaceWithName("can0")
 	if err != nil {
+		log.Println("To enable CAN on the Rspbreey Pi follow this article - https://projects-raspberry.com/how-to-connect-raspberry-pi-to-can-bus/")
 		log.Fatalf("Error starting CAN interface - %s -\nSorry, I am giving up", err)
 	} else {
 		log.Println("Connected to CAN bus - monitoring the inverters.")
@@ -539,8 +247,8 @@ func init() {
 	//		log.SetOutput(logwriter)
 	//	}
 
-	// Get the settings
-	flag.StringVar(&address, "teslaPort", "/dev/serial/by-path/platform-3f980000.usb-usb-0:1.2:1.0-port0", "Serial port address")
+	// The Tesla serial port should be set using UDEV rules to /dev/ttyTesla
+	flag.StringVar(&address, "teslaPort", "/dev/ttyTesla", "Serial port address")
 	flag.IntVar(&baudrate, "teslaBaud", 9600, "Serial port baud rate")
 	flag.IntVar(&databits, "teslaBits", 8, "Serial port data bits")
 	flag.IntVar(&stopbits, "teslaStop", 1, "Serial port stop bits")
@@ -581,7 +289,7 @@ func init() {
 
 	p, err := serial.Open(&config)
 	if err != nil {
-		log.Fatalf("ERROR - %s - Cannot connect to the Tesla RS485 port.\nSorry. I am givng up!", err)
+		log.Fatalf("ERROR - %s - Cannot connect to the Tesla RS485 port at %s\nSorry. I am givng up!", err, config.Address)
 	} else {
 		log.Println("Connecting to Tesla Wall Charger via ", config.Address)
 	}
@@ -656,8 +364,8 @@ func calculatePowerAvailable() {
 	lastPowerState := 0
 	//	var step int16
 
-	for {
-
+	powerTicker := time.NewTicker(time.Second * 5)
+	for range powerTicker.C {
 		powerState := iValues.GetChargeLevel()
 		// If we get to a point where we are inside the ideal window before midday then preheat the electrolysers ready to produce hydrogen.
 		if powerState == 0 && lastPowerState == -1 {
@@ -688,7 +396,7 @@ func calculatePowerAvailable() {
 			//			log.Println("Inverter current =", iValues.GetAmps(), "A - (negative = charging)")
 			if Electrolyser.currentSetting < 100 {
 				// If the electrolysers are running below 100% then limit the car to 20Amps
-				TeslaParameters.SetSystemAmps(20)
+				TeslaParameters.SetSystemAmps(10)
 			} else {
 				// Electrolysers are running at 100% so allow the car to run up to the full 48amps
 				TeslaParameters.SetSystemAmps(48)
@@ -700,7 +408,7 @@ func calculatePowerAvailable() {
 				if !TeslaParameters.ChangeCurrent(delta) {
 					// Charge rate increase was not accepted so turn up the electrolyser
 					//					log.Println("Increase Electrolyser ", delta, "%")
-					if !Electrolyser.ChangeRate(delta) {
+					if !Electrolyser.ChangeRate(1) {
 						Heater.Increase(iValues.GetFrequency())
 					}
 				}
@@ -708,12 +416,14 @@ func calculatePowerAvailable() {
 				// No car charging requested so set the available current to 15.0 amps and turn up the auxiliary heater
 				//				log.Println("Tesla not charging to default to 15A and increase electrolyser")
 				TeslaParameters.SetMaxAmps(15.0)
-				// If the frequency is over 60.9 the solar inverters are throttled so we should whack the electrolyser up to full immediately
+				// If the frequency is over 60.9 the solar inverters are throttled, so we should whack the electrolyser up to full immediately
 				if iValues.frequency > 60.9 {
 					delta = 100
+				} else {
+					delta = 1
 				}
 				if !Electrolyser.ChangeRate(delta) {
-					// Electrolyser did not increase so we should turn the heaters up.
+					// Electrolyser did not increase, so we should turn the heaters up.
 					//					log.Println("Electrolyser did not increase so increasing water heater")
 					Heater.Increase(iValues.GetFrequency())
 				}
@@ -724,14 +434,15 @@ func calculatePowerAvailable() {
 			if !Heater.Decrease(false) {
 				delta = 0 - int16(iValues.GetAmps()/5) // Inverter current is at 48V so 5 times the 240 car current
 				// Delta is negative here
-				//				log.Println("Inverter current =", iValues.GetAmps(), "A Discharging - Delta set to", delta)
+				// log.Println("Inverter current =", iValues.GetAmps(), "A Discharging - Delta set to", delta)
+
 				// if the heater is already off and the Tesla is above 20A then reduce the Tesla
-				if carCurrent > 20 {
+				if carCurrent > 10 {
 					// Drop the car current
-					//					log.Println("Car > 20A so change it", delta, "A")
+					//					log.Println("Car > 10A so change it", delta, "A")
 					TeslaParameters.ChangeCurrent(delta)
 				} else {
-					// Car is not above 20A so derease the Electrolysers first
+					// Car is not above 10A so derease the Electrolysers first
 					//					log.Println("Car < 20A so changing Electrolysers", delta, "%")
 					if !Electrolyser.ChangeRate(delta) {
 						// Electrolyser did not decrease, perhaps because it is already zero, so drop the car rate
@@ -741,7 +452,6 @@ func calculatePowerAvailable() {
 				}
 			}
 		}
-		time.Sleep(time.Second * 2)
 	}
 }
 
@@ -761,6 +471,7 @@ func logToDatabase() {
 	lastIused := TeslaParameters.GetCurrent()
 	lastHeatersetting := Heater.GetSetting()
 	lastHeaterpump := Heater.GetPump()
+	lastSolarPump := Heater.GetSolarPump()
 	var err error
 	hotTankTemp := int16(1000)
 
@@ -775,6 +486,7 @@ func logToDatabase() {
 		newIused := TeslaParameters.GetCurrent()
 		newHeatersetting := Heater.GetSetting()
 		newHeaterpump := Heater.GetPump()
+		newSolarPump := Heater.GetSolarPump()
 
 		if pDB == nil {
 			pDB, err = connectToDatabase()
@@ -785,13 +497,21 @@ func logToDatabase() {
 			}
 		}
 
+		if lastSolarPump != newSolarPump {
+			// Log the new solar pump value if we changed it
+			if _, err := pDB.Exec("INSERT INTO solar_pump (pump_power) values(?)", newSolarPump); err != nil {
+				log.Println(err)
+			}
+		}
+		lastSolarPump = newSolarPump
 		if (newFrequency != lastFrequency) || (newVsetpoint != lastVsetpoint) || (newVbatt != lastVbatt) || (newIbatt != lastIbatt) || (newSoc != lastSoc) {
 			lastFrequency = newFrequency
 			lastVsetpoint = newVsetpoint
 			lastVbatt = newVbatt
 			lastIbatt = newIbatt
 			lastSoc = newSoc
-			var _, err = pDB.Exec("call log_inverter_values(?, ?, ?, ?, ?)", newFrequency, newVsetpoint, newVbatt, newIbatt, newSoc)
+			var _, err = pDB.Exec("insert into inverter_values (frequency, vSetpoint, vBatt, iBatt, state_of_charge) values (?, ?, ?, ?, ?)",
+				newFrequency, newVsetpoint, newVbatt, newIbatt, newSoc)
 			if err != nil {
 				log.Printf("Error writing inverter values to the database - %s", err)
 				_ = pDB.Close()
@@ -802,7 +522,7 @@ func logToDatabase() {
 		if (newIavailable != lastIavailable) || (newIused != lastIused) {
 			lastIavailable = newIavailable
 			lastIused = newIused
-			_, err := pDB.Exec("call log_tesla_values(?, ?)", newIavailable, newIused)
+			_, err := pDB.Exec("insert into tesla_values(iSetpoint, iCharging) values(?, ?)", newIavailable, newIused)
 			if err != nil {
 				log.Printf("Error writing Tesla values to the database - %s", err)
 				_ = pDB.Close()
@@ -814,7 +534,7 @@ func logToDatabase() {
 			lastHeatersetting = newHeatersetting
 			lastHeaterpump = newHeaterpump
 			lastIused = newIused
-			_, err := pDB.Exec("call log_heater_values(?, ?)", newHeatersetting, newHeaterpump)
+			_, err := pDB.Exec("insert into water_heater_operation(status, pump) values(?, ?)", newHeatersetting, newHeaterpump)
 			if err != nil {
 				log.Printf("Error writing heater values to the database - %s", err)
 				_ = pDB.Close()
@@ -823,7 +543,7 @@ func logToDatabase() {
 			}
 		}
 		// Get the hot tank temperature
-		var err = pDB.QueryRow("select greatest(`TSH0`, `TSH1`, `TSH2`) as maxtemp from `chillii_analogue_input` where `TIMESTAMP` > date_add(now(), interval -5 minute) order by `TIMESTAMP` desc limit 1;").Scan(&hotTankTemp)
+		var err = pDB.QueryRow("select greatest(`TSH0`, `TSH1`, `TSH2`) as maxtemp from `chillii_analogue_input` where `logged` > date_add(now(), interval -5 minute) order by `logged` desc limit 1;").Scan(&hotTankTemp)
 		if err != nil {
 			Heater.SetHotTankTemp(1000) // Be safe. If we can't get the temperature assume it is boiling to shut down the heater.
 			if err != sql.ErrNoRows {
@@ -840,12 +560,12 @@ func logToDatabase() {
 func GetTemperatures() {
 	log.Println("GetTemperatures...")
 	var temperatures struct {
-		TSOC_1 int16
-		TSOPI  int16
-		TSOPO  int16
-		TSH0   int16
-		TSH1   int16
-		TSH2   int16
+		TSOC1 int16
+		TSOPI int16
+		TSOPO int16
+		TSH0  int16
+		TSH1  int16
+		TSH2  int16
 
 		TSC0 int16
 		TSC1 int16
@@ -868,16 +588,18 @@ func GetTemperatures() {
 	go esp2.readTemperatures()
 	go esp3.readTemperatures()
 
-	tempTicker := time.NewTicker(time.Second * 15)
+	tempTicker := time.NewTicker(time.Second * 5)
 	for range tempTicker.C {
+		esp1.readTemperatures()
 		temps := esp1.getTemperatures()
-		temperatures.TSOC_1 = int16(temps[0] * 10)
+		temperatures.TSOC1 = int16(temps[0] * 10)
 		temperatures.TSOPI = int16(temps[1] * 10)
 		temperatures.TSOPO = int16(temps[2] * 10)
 		temperatures.TSH0 = int16(temps[3] * 10)
 		temperatures.TSH1 = int16(temps[4] * 10)
 		temperatures.TSH2 = int16(temps[5] * 10)
 
+		esp2.readTemperatures()
 		temps = esp2.getTemperatures()
 		temperatures.TSC0 = int16(temps[0] * 10)
 		temperatures.TSC1 = int16(temps[1] * 10)
@@ -886,6 +608,7 @@ func GetTemperatures() {
 		temperatures.TSOS = int16(temps[4] * 10)
 		temperatures.TIN1 = int16(temps[5] * 10)
 
+		esp3.readTemperatures()
 		temps = esp3.getTemperatures()
 		temperatures.TCHCI1 = int16(temps[0] * 10)
 		temperatures.TCHCO1 = int16(temps[1] * 10)
@@ -894,31 +617,39 @@ func GetTemperatures() {
 		temperatures.TCHGI1 = int16(temps[4] * 10)
 		temperatures.TCHGO1 = int16(temps[5] * 10)
 
-		if _, err := pDB.Exec(`INSERT INTO logging.chillii_analogue_input (TIMESTAMP, TSOC_1, TSOPI, TSOPO, TSH0, TSH1, TSH2,
+		// Signal the solar pump controller that we have new values
+		solarTemps := new(SolarTemps)
+		solarTemps.collector = temperatures.TSOC1
+		solarTemps.input = temperatures.TSOPI
+		solarTemps.output = temperatures.TSOPO
+		solarTemps.tankTop = temperatures.TSH0
+		solarTemps.tankMid = temperatures.TSH1
+		solarTemps.tankBottom = temperatures.TSH2
+
+		if tempUpdate != nil {
+			//			log.Print("Signal solarTemps")
+			tempUpdate <- solarTemps
+		}
+
+		//		log.Println("Write chillii analog inputs")
+		if pDB == nil {
+			if dbPtr, err := connectToDatabase(); err != nil {
+				log.Println(err)
+				continue
+			} else {
+				pDB = dbPtr
+			}
+		}
+		if _, err := pDB.Exec(`INSERT INTO logging.chillii_analogue_input (TSOC_1, TSOPI, TSOPO, TSH0, TSH1, TSH2,
 		                                   TSC0, TSC1, TSC2, TOU, TSOS, TIN_1,
 		                                   TCHCI_1, TCHCO_1, TCHEI_1, TCHEO_1, TCHGI_1, TCHGO_1)
-										VALUES (CURRENT_TIMESTAMP, ?,?,?,?,?,?,
+										VALUES (?,?,?,?,?,?,
 										        ?,?,?,?,?,?,
 										        ?,?,?,?,?,?)`,
-			temperatures.TSOC_1, temperatures.TSOPI, temperatures.TSOPO, temperatures.TSH0, temperatures.TSH1, temperatures.TSH2,
+			temperatures.TSOC1, temperatures.TSOPI, temperatures.TSOPO, temperatures.TSH0, temperatures.TSH1, temperatures.TSH2,
 			temperatures.TSC0, temperatures.TSC1, temperatures.TSC2, temperatures.TOU, temperatures.TSOS, temperatures.TIN1,
 			temperatures.TCHCI1, temperatures.TCHCO1, temperatures.TCHEI1, temperatures.TCHEO1, temperatures.TCHGI1, temperatures.TCHGO1); err != nil {
 			log.Print(err)
-		}
-		go esp1.readTemperatures()
-		go esp2.readTemperatures()
-		go esp3.readTemperatures()
-	}
-}
-
-func LogPumps() {
-	pumpTicker := time.NewTicker(time.Second * 10)
-
-	for range pumpTicker.C {
-		if pDB != nil {
-			if _, err := pDB.Exec("INSERT INTO logging.chillii_analogue_output (`timestamp`, PSOP, PSOP_AO, PSOS, PSOS_AO, PHS, PHS_AO, PSW, PSWZ, PC_1, PC_1_A0, PC_2, PC_2_A0, PC_3, PC_3_A0, PC_4, PC_4_A0, PCHG_1, PCHG_1_A0, PCHE_1, PCHE_1_A0, PCHCP_1, PCHCP_1_A0, PCHCS_1, PCHCS_1_A0)VALUES(CURRENT_TIMESTAMP, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0)"); err != nil {
-				log.Print(err)
-			}
 		}
 	}
 }
@@ -942,17 +673,29 @@ func main() {
 	// Start the Tesla Keep Alive loop
 	go teslaKeepAlive()
 
+	log.Println("********** Tesla Keep Alive started. *********")
+
 	// Start the power management loop
 	go calculatePowerAvailable()
+	log.Println("********** Calculate Power started. *********")
 
 	// Start the heater kill loop to ensure the heater is not drawing from the battery.
 	go killHeaterOnDischarge()
+	log.Println("********** Kill heater on discharge started. *********")
 
 	go logToDatabase()
+	log.Println("********** Database logger started started. *********")
 
 	go GetTemperatures()
+	log.Println("********** TGet Temperatures started. *********")
 
-	go LogPumps()
+	go ManageSolarPump()
+	log.Println("********** Solar Pump started. *********")
+
+	go ManageCpuTemp()
+	log.Println("********** CPU Temperature manager started. *********")
+
+	//	go LogPumps()
 
 	for {
 		if time.Since(t) > time.Second {

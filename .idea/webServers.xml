@@ -3,7 +3,7 @@
   <component name="WebServers">
     <option name="servers">
       <webServer id="e63dbdef-0b8e-4591-9ba1-17f1625ee85d" name="aberhome1" url="http://cedartechnology.duckdns.org:8070">
-        <fileTransfer rootFolder="/home/pi" accessType="SFTP" host="aberhome1.home" port="22" sshConfigId="58426fb4-d2fd-4317-892f-5626a207ccd5" sshConfig="AberHome" keyPair="true">
+        <fileTransfer rootFolder="/home/pi" accessType="SFTP" host="aberhome1.local" port="22" sshConfigId="58426fb4-d2fd-4317-892f-5626a207ccd5" sshConfig="AberHome">
           <advancedOptions>
             <advancedOptions dataProtectionLevel="Private" passiveMode="true" shareSSLContext="true" />
           </advancedOptions>

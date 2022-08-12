@@ -98,7 +98,7 @@ func (p *Params) ChangeCurrent(delta int16) bool {
 			delta = 3
 		}
 		if maxAmps >= systemMax {
-			log.Println("Tesla is at maximum amps allowed")
+			//			log.Println("Tesla is at maximum amps allowed")
 			// We are already at the system maximum so do nothing
 			return false
 		}
