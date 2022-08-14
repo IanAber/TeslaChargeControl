@@ -33,6 +33,9 @@ func setUpWebSite() {
 	router.HandleFunc("/realtime/getcoldtank", getColdTankData).Methods("GET")
 	router.HandleFunc("/realtime/gethottank", getHotTankData).Methods("GET")
 	router.HandleFunc("/realtime/getsolartemps", getSolarTempData).Methods("GET")
+	router.HandleFunc("/realtime/getSolar", getSolar).Methods("GET")
+	router.HandleFunc("/realtime/getLoopTemps", getLoopTemps).Methods("GET")
+	router.HandleFunc("/realtime/getpumps", getPumpData).Methods("GET")
 
 	fileServer := http.FileServer(neuteredFileSystem{http.Dir("/var/www/html")})
 	router.PathPrefix("/").Handler(http.StripPrefix("/", fileServer))
