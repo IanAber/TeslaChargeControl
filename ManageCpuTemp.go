@@ -36,14 +36,14 @@ func ManageCpuTemp() {
 
 		pin := rpio.Pin(FanPin)
 		pin.Mode(rpio.Output)
-		if t, err := GetCpuTemp(); err != nil || t > 48.0 {
+		if t, err := GetCpuTemp(); err != nil || t > 49.0 {
 			if pin.Read() != 0 {
-				log.Print("Temp = ", t, "Turn on the fan")
+				log.Print("Temp = ", t, " Turn on the fan")
 				pin.Low()
 			}
 		} else {
-			if (t < 47) && (pin.Read() == 0) {
-				log.Print("Temp = ", t, "Turn off the fan")
+			if (t < 46) && (pin.Read() == 0) {
+				log.Print("Temp = ", t, " Turn off the fan")
 				pin.High()
 			}
 		}

@@ -1,0 +1,14 @@
+<html><head><title>Tesla API Login</title>
+</head>
+<body>
+<!--	<form action="https://owner-api.teslamotors.com/oauth/token" method="POST"> -->
+	<form action="http://localhost:8080/teslaLogin" method="POST"></form>
+		<label for="email">Email :</label><input id="email" name="email" style="width:300px" value="Ian.Abercrombie@CedarTechnology.com" /><br>
+		<label for="password">Password :</label><input id="password" name="password" style="width:300px" value="Cedar123#" /><br>
+		<input id="client_id" name="client_id" value="81527cff06843c8634fdc09e8ac0abefb46ac849f38fe1e431c2ef2106796384" />
+		<input id="client_secret" name="client_secret" value="c7257eb71a564034f9419ee651c7d0e5f7aa6bfbd18bafb5c5c033b093bb2fa3" />
+		<input id="grant_type" name="grant_type" value="password" />
+		<button type="text" type="submit">Log in to Tesla</button>
+	</form>
+</body>
+</html>

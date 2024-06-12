@@ -1,0 +1,175 @@
+<html lang="en">
+<head>
+    <title id='Description'>Axiliary Water Heater Operation Tracker</title>
+    <link rel="stylesheet" href="../jqwidgets/styles/jqx.base.css" type="text/css" />
+    <link rel="stylesheet" href="../jqwidgets/styles/jqx.web.css" type="text/css" />
+    <script type="text/javascript" src="../scripts/jquery-3.6.0.min.js"></script>
+    <script type="text/javascript" src="../jqwidgets/jqxcore.js"></script>
+    <script type="text/javascript" src="../jqwidgets/jqxchart.core.js"></script>
+    <script type="text/javascript" src="../jqwidgets/jqxdraw.js"></script>
+    <script type="text/javascript" src="../jqwidgets/jqxdata.js"></script>
+    <script type="text/javascript">
+
+        var start = new Date();
+        start.setSeconds(0);
+        start.setMinutes(0);  
+        start.setHours(8);
+        var end = new Date(start);
+        end.setHours(20);
+        var TeslaTimeOut;
+
+		function buildTeslaURL() {
+			end = new Date();
+			start = new Date(end - document.getElementById("timeRange").value)
+			return encodeURI("../realtime/getTesla?start="
+					+ start.getFullYear() + "-" + (start.getMonth() + 1) + "-" + start.getDate() + " " + start.getHours() + ":" + start.getMinutes()
+					+ "&end=" + end.getFullYear() + "-" + (end.getMonth() + 1) + "-" + end.getDate() + " " + end.getHours() + ":" + end.getMinutes());
+    	}
+
+		function xAxisFormatFunction(value, itemIndex, series, group) {
+        	var dt = new Date(value * 1000);
+			return dt.getHours().toLocaleString('en-US', {minimumIntegerDigits: 2, useGrouping:false}) + ":"
+													 + dt.getMinutes().toLocaleString('en-US', {minimumIntegerDigits: 2, useGrouping:false});
+        }
+
+        $(document).ready(function () {
+			// prepare heater jqxChart settings
+			var teslaSettings = {
+				title: "Tesla Charging",
+				description: "Tesla charge activity for today",
+				enableAnimations: false,
+				animationDuration: 1000,
+				enableAxisTextAnimation: true,
+				showLegend: true,
+				padding: { left: 5, top: 5, right: 5, bottom: 5 },
+				titlePadding: { left: 90, top: 0, right: 0, bottom: 10 },
+				colorScheme: 'scheme04',
+				categoryAxis: {
+					dataField: 'logged',
+					showGridLines: false,
+					textRotationAngle: 270,
+					unitInterval: 1800,
+					formatFunction: xAxisFormatFunction,
+					minValue: Math.trunc(start.getTime() / 1000),
+					maxValue: Math.trunc((end.getTime() / 1000))
+				},
+				colorScheme: 'scheme01',
+				seriesGroups: [{
+					type: 'stepline',
+					valueAxis: {
+						unitInterval: 10,
+						tickMarks: {
+							visible: true,
+							step: 20,
+						},
+						gridLines: {
+							visible: true,
+							step: 1,
+						},
+						labels: {
+							formatSettings: {
+								decimalPlaces: 0,
+							},
+							visible: true,
+							step: 1,
+						},
+						minValue: 0,
+						maxValue: 48,
+						description: 'Tesla Charging Activity',
+					},
+					series: [{
+						dataField: 'iSetpoint',
+						displayText: 'Available Current',
+						lineColor: '#C00000',
+						fillColor: '#FF1010',
+            		},
+            		{
+						dataField: 'iCharging',
+						displayText: 'Charge Current',
+						lineColor: '#00C000',
+						fillColor: '#10FF10',
+            		}]
+				}]
+			}
+            
+				// select the chartContainer DIV element and render the chart.
+			$('#TeslaChartContainer').jqxChart(teslaSettings);
+			getTesla();
+		});
+
+
+		function getTesla() {
+			fetch(buildTeslaURL())
+				.then( function(response) {
+					if (response.status == 200) {
+						response.json()
+							.then(function(data) {
+								now = new Date();
+								data.push({
+									"logged":(Math.trunc(now.getTime() / 1000)).toString(),
+									"iSetpoint":data[data.length - 1].iSetpoint,
+									"iCharging":data[data.length - 1].iCharging
+								});
+	                            end = Math.trunc(now.getTime() / 1000) + 60;
+    	                        start = (end - document.getElementById("timeRange").value / 1000) - 120
+
+								$('#TeslaChartContainer').jqxChart({'source':data});
+								$('#TeslaChartContainer').jqxChart({'categoryAxis':{
+									dataField: 'logged',
+									showGridLines: false,
+									textRotationAngle: 270,
+									unitInterval: 1800,
+									formatFunction: xAxisFormatFunction,
+									'minValue':start,
+									'maxValue':end}});
+								$('#TeslaChartContainer').jqxChart('update');
+
+/*								now = new Date();
+								if (now > end) {
+									now = end;
+								}
+								data.data.push({
+									"logged":(Math.trunc(now.getTime() / 1000)).toString(),
+									"iSetpoint":data.data[data.data.length - 1].iSetpoint,
+									"iCharging":data.data[data.data.length - 1].iCharging
+								});
+								$('#TeslaChartContainer').jqxChart({'source':data.data});
+								$('#TeslaChartContainer').jqxChart('update'); */
+							});
+					}
+				})
+				.catch(function(err) {
+					if(err.name === "TypeError" && err.message != "cancelled") {
+						alert('Tesla Fetch Error :-S' + err.message);
+					}
+				});
+			HeaterTimeOut = setTimeout(getTesla, 5000);
+		};
+	
+	
+		function goBack() {
+			window.clearTimeout(TeslaTimeOut);
+			if (window.history.length > 1) {
+				setTimeout(window.history.back(), 1000);
+			} else {
+				setTimeout(window.close(), 1000);
+			}
+		};
+    </script>
+</head>
+    <body style="background:white;">
+        <div id='TeslaChartContainer' style="width:100%; height: 96%" ></div>
+		<div style="text-align:center; width:100%; height: 4%">
+			<button onClick="goBack()" style="width:50%;height:100%" >Back</button>&nbsp;
+			<select id="timeRange" onchange="getTesla()">
+			<option value=86400000>24 Hours</option>
+			<option value=43200000>12 Hours</option>
+			<option value=28800000>8 Hours</option>
+			<option value=14400000 selected='selected'>4 Hours</option>
+			<option value=7200000>2 Hours</option>
+			<option value=3600000>1 Hour</option>
+			<option value=1800000>30 Minutes</option>
+			</select>
+		</div>
+	</body>
+</html>

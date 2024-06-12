@@ -2,17 +2,14 @@ package main
 
 import (
 	"SystemController/Params"
-	"SystemController/TeslaAPI"
 	"SystemController/twcMessage"
 	"SystemController/twcSlave"
 	_ "crypto/aes"
 	"database/sql"
 	"flag"
-	"fmt"
 	"github.com/IanAber/SMACanMessages"
 	"log"
 	"os"
-	"runtime"
 	"time"
 
 	"github.com/brutella/can"
@@ -23,31 +20,32 @@ import (
 // Version 2 makes parameters editable via the WEB interface
 
 const CHARGINGLINKS = `<a href="/startCharging">Start Charging</a><br><a href="/stopCharging">Stop Charging</a>`
-const maxGasPressure = 34.0 // Pressure above which we do not increase the electrolyser output
+
+//const maxGasPressure = 34.0 // Pressure above which we do not increase the electrolyser output
 
 var (
-	address          string
-	baudrate         int
-	databits         int
-	stopbits         int
-	parity           string
-	verbose          bool
-	apiPort          uint
-	databaseServer   string
-	databasePort     string
-	databaseName     string
-	databaseLogin    string
-	databasePassword string
-	masterAddress    uint
-	port             serial.Port
-	TeslaParameters  Params.Params
-	Heater           *HeaterSetting
-	Electrolyser     ElectrolyserSetting
-	iValues          InverterValues
-	slaves           []twcSlave.Slave
-	pDB              *sql.DB
-	API              *TeslaAPI.TeslaAPI
-	SolarProduction  struct {
+	address               string
+	baudrate              int
+	databits              int
+	stopbits              int
+	parity                string
+	verbose               bool
+	apiPort               uint
+	databaseServer        string
+	databasePort          string
+	databaseName          string
+	databaseLogin         string
+	databasePassword      string
+	ChargingConstantsFile string
+	masterAddress         uint
+	port                  serial.Port
+	TeslaParameters       Params.Params
+	Heater                *HeaterSetting
+	//	Electrolyser          ElectrolyserSetting
+	iValues         InverterValues
+	slaves          []twcSlave.Slave
+	pDB             *sql.DB
+	SolarProduction struct {
 		power  float32
 		logged time.Time
 	}
@@ -107,7 +105,7 @@ func checkSlaveTimeouts(slaves []twcSlave.Slave) []twcSlave.Slave {
 
 func sendHearbeatsToSlaves(slaves []twcSlave.Slave, masterAddress uint16) {
 	for i := range slaves {
-		slaves[i].SendMasterHeartbeat(masterAddress, API)
+		slaves[i].SendMasterHeartbeat(masterAddress)
 	}
 }
 
@@ -126,15 +124,18 @@ func divideMaxAmpsAmongstSlaves(slaves []twcSlave.Slave, maxAmps uint16) {
 	if activeCars > 0 {
 		maxAmps = maxAmps / activeCars
 	}
-	// Tesla can only accept charging currents from 5 amps upwards. We are trying to set a current of less
-	// than 6 amps fix it to 5 amps unless the battery state of charge is less than 85%
-	// If we end up with less than 5 amps for each car, stop charging until we have more available
-	if maxAmps < 500 {
-		if iValues.GetSOC() > 85 {
-			maxAmps = 500
+	// Tesla can only accept charging currents from 6 amps upwards. We are trying to set a current of less
+	// than 6 amps fix it to 6 amps unless the battery state of charge is less than 50%
+	// If we end up with less than 6 amps for each car, stop charging until we have more available
+	if maxAmps < 600 && maxAmps > 0 {
+		if iValues.GetSOC() >= 50 {
+			maxAmps = 600
 		} else {
 			maxAmps = 0
 		}
+	}
+	if TeslaParameters.IsLogging() {
+		log.Printf("Setting maximum car current to %fA", float64(maxAmps)/100)
 	}
 	// Share out the current amongst the cars waiting to charge or actively charging
 	for i := range slaves {
@@ -153,7 +154,7 @@ func handleCANFrame(frm can.Frame) {
 		iValues.SetVolts(c305.VBatt())
 		iValues.SetAmps(c305.IBatt())
 		iValues.SetSOC(c305.SocBatt())
-		API.AllowStart = c305.IBatt() < -30
+		//		API.AllowStart = c305.IBatt() < -30
 		//		log.Printf("V = %f, I = %f, DOC = %f\n", c305.VBatt(), c305.IBatt(), c305.SocBatt())
 
 	case 0x306: // Charge procedure, Operating state, Active error, Charge set point
@@ -240,13 +241,6 @@ func connectToDatabase() (*sql.DB, error) {
 }
 
 func init() {
-
-	// Set up logging
-	//	logwriter, e := syslog.New(syslog.LOG_NOTICE, "myprog")
-	//	if e == nil {
-	//		log.SetOutput(logwriter)
-	//	}
-
 	// The Tesla serial port should be set using UDEV rules to /dev/ttyTesla
 	flag.StringVar(&address, "teslaPort", "/dev/ttyTesla", "Serial port address")
 	flag.IntVar(&baudrate, "teslaBaud", 9600, "Serial port baud rate")
@@ -261,6 +255,7 @@ func init() {
 	flag.StringVar(&databasePassword, "dbPassword", "logger", "Database user password")
 	flag.StringVar(&databasePort, "dbPort", "3306", "Database port")
 	flag.BoolVar(&verbose, "verbose", false, "Enable verbose mode to trace information to STDOUT.")
+	flag.StringVar(&ChargingConstantsFile, "constantsFile", "/var/www/html/params/charge_params.json", "Path of the file in which the charging constants are stored")
 	flag.Parse()
 	log.SetFlags(log.Lshortfile | log.LstdFlags)
 
@@ -268,12 +263,12 @@ func init() {
 	TeslaParameters.Reset()
 	Heater = NewHeaterSetting()
 	// Set up the quintic function to control charging
-	err := iValues.LoadFunctionConstants("/var/www/html/params/charge_params.json")
+	err := iValues.LoadFunctionConstants(ChargingConstantsFile)
 	if err != nil {
 		log.Fatal(err)
 	}
 
-	fmt.Println("Verbose = ", verbose)
+	log.Println("Verbose = ", verbose)
 
 	// Set up the API WEBSite
 	go setUpWebSite()
@@ -303,55 +298,49 @@ func init() {
 		log.Println("Connected to the database")
 	}
 
-	API, err = TeslaAPI.New()
-	if err != nil {
-		log.Println(err)
-	} else {
-		log.Println("Tesla API setup and ready.")
-	}
-
 	log.SetFlags(log.Lshortfile | log.Ldate | log.Ltime)
-	Electrolyser.Enabled = true
-	Electrolyser.gasPressure = maxGasPressure
+	//	Electrolyser.Enabled = true
+	//	Electrolyser.gasPressure = maxGasPressure
 	// Start handling incoming CAN bus messages
 	go processCANFrames()
 }
 
-// Ping the API for the vehicle ID every 2 hours. This should update the token as required
-func teslaKeepAlive() {
-	defer func() {
-		stackSlice := make([]byte, 512)
-		s := runtime.Stack(stackSlice, false)
-		log.Printf("\n%s", stackSlice[0:s])
-	}()
-	for {
-		if API.IsConfigured() {
-			err := API.GetVehicleId()
-			if err != nil {
-				log.Println(err)
-			}
-		} else {
-			log.Println("tesla keep alive - API is not configured")
-			err := API.SendMail("Keep Alive Failed", "Tesla Keep Alive Failed - Not Configured")
-			if err != nil {
-				log.Println(err)
-			}
-		}
-		time.Sleep(time.Hour * 2)
-	}
-}
+// TODO - Remove this
+//// Ping the API for the vehicle ID every 2 hours. This should update the token as required
+//func teslaKeepAlive() {
+//	defer func() {
+//		stackSlice := make([]byte, 512)
+//		s := runtime.Stack(stackSlice, false)
+//		log.Printf("\n%s", stackSlice[0:s])
+//	}()
+//	for {
+//		if API.IsConfigured() {
+//			err := API.GetVehicleId()
+//			if err != nil {
+//				log.Println(err)
+//			}
+//		} else {
+//			log.Println("tesla keep alive - API is not configured")
+//			err := API.SendMail("Keep Alive Failed", "Tesla Keep Alive Failed - Not Configured")
+//			if err != nil {
+//				log.Println(err)
+//			}
+//		}
+//		time.Sleep(time.Hour * 2)
+//	}
+//}
 
-// Make sure the heater is turned down if we are discharging
-func killHeaterOnDischarge() {
-	for {
-		// If discharging at more than 1 amp then decrease the heater if it is on
-		// This makes recovery from discharge quite fast.
-		if (iValues.GetAmps() > 1) && (Heater.GetSetting() > 0) {
-			Heater.Decrease(true)
-		}
-		time.Sleep(time.Second)
-	}
-}
+//// Make sure the heater is turned down if we are discharging
+//func killHeaterOnDischarge() {
+//	for {
+//		// If discharging at more than 1 amp then decrease the heater if it is on
+//		// This makes recovery from discharge quite fast.
+//		if (iValues.GetAmps() > 1) && (Heater.GetSetting() > 0) {
+//			Heater.Decrease(true)
+//		}
+//		time.Sleep(time.Second)
+//	}
+//}
 
 // This function will look at the various inverter parameters and work out if there is power available for car charging or water heating
 // It bases this calculation on the current battery state of charge, the battery charging current and the difference between the setpoint
@@ -361,20 +350,19 @@ func calculatePowerAvailable() {
 	//	var soc float32
 	//	var frequency float64
 	var delta int16
-	lastPowerState := 0
+	//	lastPowerState := 0
 	//	var step int16
 
 	powerTicker := time.NewTicker(time.Second * 5)
 	for range powerTicker.C {
-		powerState := iValues.GetChargeLevel()
-		// If we get to a point where we are inside the ideal window before midday then preheat the electrolysers ready to produce hydrogen.
-		if powerState == 0 && lastPowerState == -1 {
-			if time.Now().Hour() < 12 {
-				Electrolyser.preHeat()
+		if iValues.soc > 98 || (iValues.soc > 50 && iValues.GetAmps() < 30.0) {
+			for iSlave := range slaves {
+				slaves[iSlave].Enable(true)
 			}
 		}
-		lastPowerState = powerState
 
+		powerState := iValues.GetChargeLevel()
+		//// If we get to a point where we are inside the ideal window before midday then preheat the electrolysers ready to produce hydrogen.
 		// Set the total car charging current for all cars charging
 		carCurrent := float32(0.0)
 		for i := range slaves {
@@ -383,35 +371,20 @@ func calculatePowerAvailable() {
 		TeslaParameters.SetCurrent(carCurrent)
 
 		if iValues.AutoGn {
-			// If the generator is running turn off the Tesla and the auxiliary heater
+			// If the generator is running turn off the Tesla
 			TeslaParameters.SetMaxAmps(0)
-			Electrolyser.ChangeRate(-100)
-			if Heater.GetSetting() > 0 {
-				Heater.SetHeater(0)
-			}
 		} else if powerState == 1 { // If the delta is less than the minimum we can take more power
-			//			log.Println("Increasing consumption")
 			// Inverter current is at 48V so approx. 5 times car current. We should push it up in small stages
-			delta = 0 - int16(iValues.GetAmps()/10) // Charging shows as a negative inverter current
-			//			log.Println("Inverter current =", iValues.GetAmps(), "A - (negative = charging)")
-			if Electrolyser.currentSetting < 100 {
-				// If the electrolysers are running below 100% then limit the car to 20Amps
-				TeslaParameters.SetSystemAmps(10)
+			// if the state of charge of the battery > 98% and battery current is less than 100A go up 5 amps til we hit the top.
+			if iValues.soc > 98 && iValues.GetAmps() < 100 {
+				delta = 5
 			} else {
-				// Electrolysers are running at 100% so allow the car to run up to the full 48amps
-				TeslaParameters.SetSystemAmps(48)
+				delta = 0 - int16(iValues.GetAmps()/10) // Charging shows as a negative inverter current
 			}
-			//			log.Println("Tesla set to", TeslaParameters.GetMaxAmps(), "Amps Max.")
+			TeslaParameters.SetSystemAmps(48) // I am not sure why we need to do this here.
 			if carCurrent > 1 {
 				// Car is charging so try and increase the charge rate
-				//				log.Println("Change Tesla", delta, "A")
-				if !TeslaParameters.ChangeCurrent(delta) {
-					// Charge rate increase was not accepted so turn up the electrolyser
-					//					log.Println("Increase Electrolyser ", delta, "%")
-					if !Electrolyser.ChangeRate(1) {
-						Heater.Increase(iValues.GetFrequency())
-					}
-				}
+				TeslaParameters.ChangeCurrent(delta)
 			} else {
 				// No car charging requested so set the available current to 15.0 amps and turn up the auxiliary heater
 				//				log.Println("Tesla not charging to default to 15A and increase electrolyser")
@@ -422,35 +395,20 @@ func calculatePowerAvailable() {
 				} else {
 					delta = 1
 				}
-				if !Electrolyser.ChangeRate(delta) {
-					// Electrolyser did not increase, so we should turn the heaters up.
-					//					log.Println("Electrolyser did not increase so increasing water heater")
-					Heater.Increase(iValues.GetFrequency())
-				}
 			}
 		} else if powerState == -1 { // If the delta is more than the max we need to reduce the load to give the battery chance to charge up
-			// Turn the water heat down first
-			//			log.Println("Reducing consumption")
-			if !Heater.Decrease(false) {
-				delta = 0 - int16(iValues.GetAmps()/5) // Inverter current is at 48V so 5 times the 240 car current
-				// Delta is negative here
-				// log.Println("Inverter current =", iValues.GetAmps(), "A Discharging - Delta set to", delta)
-
-				// if the heater is already off and the Tesla is above 20A then reduce the Tesla
-				if carCurrent > 10 {
-					// Drop the car current
-					//					log.Println("Car > 10A so change it", delta, "A")
-					TeslaParameters.ChangeCurrent(delta)
-				} else {
-					// Car is not above 10A so derease the Electrolysers first
-					//					log.Println("Car < 20A so changing Electrolysers", delta, "%")
-					if !Electrolyser.ChangeRate(delta) {
-						// Electrolyser did not decrease, perhaps because it is already zero, so drop the car rate
-						//						log.Println("Electrolyser is 0 so changing the Tesla ", delta, "A")
-						TeslaParameters.ChangeCurrent(delta)
-					}
+			delta = 0 - int16((iValues.GetAmps()+10)/5) // Inverter current is at 48V so 5 times the 240 car current
+			if iValues.soc > 97 {
+				// if the battery is more than 97% full then reduce the car by a maximum of 5A at a time
+				delta = -5
+				if iValues.Log || TeslaParameters.IsLogging() {
+					log.Println("battery over 97% so only reducing Tesla by 5 amps")
 				}
 			}
+			if iValues.Log || TeslaParameters.IsLogging() {
+				log.Printf("car = %f, changing it %dA", carCurrent, delta)
+			}
+			TeslaParameters.ChangeCurrent(delta)
 		}
 	}
 }
@@ -469,9 +427,10 @@ func logToDatabase() {
 	lastSoc := iValues.GetSOC()
 	lastIavailable := TeslaParameters.GetMaxAmps()
 	lastIused := TeslaParameters.GetCurrent()
-	lastHeatersetting := Heater.GetSetting()
-	lastHeaterpump := Heater.GetPump()
-	lastSolarPump := Heater.GetSolarPump()
+	//lastHeatersetting := Heater.GetSetting()
+	//lastHeaterpump := Heater.GetPump()
+	//	lastSolarPump := Heater.GetSolarPump()
+	lastSolarPump := uint8(255)
 	var err error
 	hotTankTemp := int16(1000)
 
@@ -484,8 +443,8 @@ func logToDatabase() {
 		newSoc := iValues.GetSOC()
 		newIavailable := TeslaParameters.GetMaxAmps()
 		newIused := TeslaParameters.GetCurrent()
-		newHeatersetting := Heater.GetSetting()
-		newHeaterpump := Heater.GetPump()
+		//newHeatersetting := Heater.GetSetting()
+		//newHeaterpump := Heater.GetPump()
 		newSolarPump := Heater.GetSolarPump()
 
 		if pDB == nil {
@@ -530,20 +489,20 @@ func logToDatabase() {
 				continue
 			}
 		}
-		if (newHeatersetting != lastHeatersetting) || (newHeaterpump != lastHeaterpump) {
-			lastHeatersetting = newHeatersetting
-			lastHeaterpump = newHeaterpump
-			lastIused = newIused
-			_, err := pDB.Exec("insert into water_heater_operation(status, pump) values(?, ?)", newHeatersetting, newHeaterpump)
-			if err != nil {
-				log.Printf("Error writing heater values to the database - %s", err)
-				_ = pDB.Close()
-				pDB = nil
-				continue
-			}
-		}
+		//if (newHeatersetting != lastHeatersetting) || (newHeaterpump != lastHeaterpump) {
+		//	lastHeatersetting = newHeatersetting
+		//	lastHeaterpump = newHeaterpump
+		//	lastIused = newIused
+		//	_, err := pDB.Exec("insert into water_heater_operation(status, pump) values(?, ?)", newHeatersetting, newHeaterpump)
+		//	if err != nil {
+		//		log.Printf("Error writing heater values to the database - %s", err)
+		//		_ = pDB.Close()
+		//		pDB = nil
+		//		continue
+		//	}
+		//}
 		// Get the hot tank temperature
-		var err = pDB.QueryRow("select greatest(`TSH0`, `TSH1`, `TSH2`) as maxtemp from `chillii_analogue_input` where `logged` > date_add(now(), interval -5 minute) order by `logged` desc limit 1;").Scan(&hotTankTemp)
+		var err = pDB.QueryRow("select greatest(`HotTankTop`, `HotTankMiddle`, `HotTankBottom`) as maxtemp from `temperatures` where `logged` > date_add(now(), interval -5 minute) order by `logged` desc limit 1;").Scan(&hotTankTemp)
 		if err != nil {
 			Heater.SetHotTankTemp(1000) // Be safe. If we can't get the temperature assume it is boiling to shut down the heater.
 			if err != sql.ErrNoRows {
@@ -560,78 +519,87 @@ func logToDatabase() {
 func GetTemperatures() {
 	log.Println("GetTemperatures...")
 	var temperatures struct {
-		TSOC1 int16
-		TSOPI int16
-		TSOPO int16
-		TSH0  int16
-		TSH1  int16
-		TSH2  int16
+		SolarCollector int16 //TSOC1
+		SolarInlet     int16 //TSOPI
+		SolarOutlet    int16 //TSOPO
+		HotTankTop     int16 //TSH0
+		HotTankMiddle  int16 //TSH2
+		HotTankBottom  int16 //TSH1
 
-		TSC0 int16
-		TSC1 int16
-		TSC2 int16
-		TOU  int16
-		TSOS int16
-		TIN1 int16
+		ColdTankBottom int16 //TSC0
+		ColdTankTop    int16 //TSC1
+		ColdTankMiddle int16 //TSC2
+		AmbientOutside int16 //TOU
+		SolarExchanger int16 //TSOS
+		Bedroom        int16 //TIN1
 
-		TCHCI1 int16
-		TCHCO1 int16
-		TCHEI1 int16
-		TCHEO1 int16
-		TCHGI1 int16
-		TCHGO1 int16
+		CondenserIn   int16 //TCHCI_1
+		CondenserOut  int16 //TCHCO_1
+		EvaporatorIn  int16 //TCHEI_1
+		EvaporatorOut int16 //TCHEO_1
+		GeneratorIn   int16 //TCHGI_1
+		GeneratorOut  int16 //TCHGO_1
 	}
 	esp1 := NewESPTemperature("http://ESPTEMP1.home")
 	esp2 := NewESPTemperature("http://ESPTEMP2.home")
 	esp3 := NewESPTemperature("http://ESPTEMP3.home")
-	go esp1.readTemperatures()
-	go esp2.readTemperatures()
-	go esp3.readTemperatures()
+	esp1.readTemperatures()
+	esp2.readTemperatures()
+	esp3.readTemperatures()
 
 	tempTicker := time.NewTicker(time.Second * 5)
 	for range tempTicker.C {
-		esp1.readTemperatures()
+		//		esp1.readTemperatures()
 		temps := esp1.getTemperatures()
-		temperatures.TSOC1 = int16(temps[0] * 10)
-		temperatures.TSOPI = int16(temps[1] * 10)
-		temperatures.TSOPO = int16(temps[2] * 10)
-		temperatures.TSH0 = int16(temps[3] * 10)
-		temperatures.TSH1 = int16(temps[4] * 10)
-		temperatures.TSH2 = int16(temps[5] * 10)
+		temperatures.SolarCollector = int16(temps[0] * 10)
+		temperatures.SolarInlet = int16(temps[1] * 10)
+		temperatures.SolarOutlet = int16(temps[2] * 10)
+		temperatures.HotTankTop = int16(temps[3] * 10)
+		temperatures.HotTankMiddle = int16(temps[4] * 10)
+		temperatures.HotTankBottom = int16(temps[5] * 10)
 
-		esp2.readTemperatures()
+		//		esp2.readTemperatures()
 		temps = esp2.getTemperatures()
-		temperatures.TSC0 = int16(temps[0] * 10)
-		temperatures.TSC1 = int16(temps[1] * 10)
-		temperatures.TSC2 = int16(temps[2] * 10)
-		temperatures.TOU = int16(temps[3] * 10)
-		temperatures.TSOS = int16(temps[4] * 10)
-		temperatures.TIN1 = int16(temps[5] * 10)
+		temperatures.ColdTankBottom = int16(temps[0] * 10)
+		temperatures.ColdTankTop = int16(temps[1] * 10)
+		temperatures.ColdTankMiddle = int16(temps[2] * 10)
+		temperatures.AmbientOutside = int16(temps[3] * 10)
+		temperatures.SolarExchanger = int16(temps[4] * 10)
+		temperatures.Bedroom = int16(temps[5] * 10)
 
-		esp3.readTemperatures()
+		//		esp3.readTemperatures()
 		temps = esp3.getTemperatures()
-		temperatures.TCHCI1 = int16(temps[0] * 10)
-		temperatures.TCHCO1 = int16(temps[1] * 10)
-		temperatures.TCHEI1 = int16(temps[2] * 10)
-		temperatures.TCHEO1 = int16(temps[3] * 10)
-		temperatures.TCHGI1 = int16(temps[4] * 10)
-		temperatures.TCHGO1 = int16(temps[5] * 10)
+		temperatures.GeneratorIn = int16(temps[0] * 10)
+		temperatures.GeneratorOut = int16(temps[1] * 10)
+		temperatures.EvaporatorIn = int16(temps[2] * 10)
+		temperatures.EvaporatorOut = int16(temps[3] * 10)
+		temperatures.CondenserIn = int16(temps[4] * 10)
+		temperatures.CondenserOut = int16(temps[5] * 10)
 
 		// Signal the solar pump controller that we have new values
 		solarTemps := new(SolarTemps)
-		solarTemps.collector = temperatures.TSOC1
-		solarTemps.input = temperatures.TSOPI
-		solarTemps.output = temperatures.TSOPO
-		solarTemps.tankTop = temperatures.TSH0
-		solarTemps.tankMid = temperatures.TSH1
-		solarTemps.tankBottom = temperatures.TSH2
+		solarTemps.collector = temperatures.SolarCollector
+		solarTemps.input = temperatures.SolarInlet
+		solarTemps.output = temperatures.SolarOutlet
+		solarTemps.tankTop = temperatures.HotTankTop
+		solarTemps.tankMid = temperatures.HotTankMiddle
+		solarTemps.tankBottom = temperatures.HotTankBottom
+		solarTemps.exchanger = temperatures.SolarExchanger
 
 		if tempUpdate != nil {
-			//			log.Print("Signal solarTemps")
+
+			// Force temperatures in case of failure.
+			//log.Print("Signal solarTemps", solarTemps)
+			//solarTemps.collector = 1000
+			//solarTemps.input = 600
+			//solarTemps.exchanger = 950
+			//solarTemps.output = 950
+			//solarTemps.tankMid = 60
+			//solarTemps.tankTop = 60
+			//solarTemps.tankBottom = 60
 			tempUpdate <- solarTemps
 		}
 
-		//		log.Println("Write chillii analog inputs")
 		if pDB == nil {
 			if dbPtr, err := connectToDatabase(); err != nil {
 				log.Println(err)
@@ -640,17 +608,25 @@ func GetTemperatures() {
 				pDB = dbPtr
 			}
 		}
-		if _, err := pDB.Exec(`INSERT INTO logging.chillii_analogue_input (TSOC_1, TSOPI, TSOPO, TSH0, TSH1, TSH2,
-		                                   TSC0, TSC1, TSC2, TOU, TSOS, TIN_1,
-		                                   TCHCI_1, TCHCO_1, TCHEI_1, TCHEO_1, TCHGI_1, TCHGO_1)
+		if _, err := pDB.Exec(`INSERT INTO logging.temperatures (HotTankTop, HotTankMiddle, HotTankBottom,
+                                  						BufferTankTop, BufferTankMiddle, BufferTankBottom, 
+                                  						GeneratorIn, GeneratorOut, EvaportatorIn, EvaporatorOut, CondenserIn, CondenserOut, 
+                                  						SolarCollector, SolarInlet, SolarOutlet, SolarExchanger, 
+                                  						AmbientOutside, Bedroom)
 										VALUES (?,?,?,?,?,?,
 										        ?,?,?,?,?,?,
 										        ?,?,?,?,?,?)`,
-			temperatures.TSOC1, temperatures.TSOPI, temperatures.TSOPO, temperatures.TSH0, temperatures.TSH1, temperatures.TSH2,
-			temperatures.TSC0, temperatures.TSC1, temperatures.TSC2, temperatures.TOU, temperatures.TSOS, temperatures.TIN1,
-			temperatures.TCHCI1, temperatures.TCHCO1, temperatures.TCHEI1, temperatures.TCHEO1, temperatures.TCHGI1, temperatures.TCHGO1); err != nil {
+			temperatures.HotTankTop, temperatures.HotTankMiddle, temperatures.HotTankBottom,
+			temperatures.ColdTankTop, temperatures.ColdTankMiddle, temperatures.ColdTankBottom,
+			temperatures.GeneratorIn, temperatures.GeneratorOut, temperatures.EvaporatorIn, temperatures.EvaporatorOut, temperatures.CondenserIn, temperatures.CondenserOut,
+			temperatures.SolarCollector, temperatures.SolarInlet, temperatures.SolarOutlet, temperatures.SolarExchanger,
+			temperatures.AmbientOutside, temperatures.Bedroom); err != nil {
 			log.Print(err)
 		}
+		go esp1.readTemperatures()
+		go esp2.readTemperatures()
+		go esp3.readTemperatures()
+
 	}
 }
 
@@ -670,8 +646,9 @@ func main() {
 	msg := twcMessage.New(port, verbose)
 	t := time.Now()
 
+	// TODO - Remove this
 	// Start the Tesla Keep Alive loop
-	go teslaKeepAlive()
+	//	go teslaKeepAlive()
 
 	log.Println("********** Tesla Keep Alive started. *********")
 
@@ -679,9 +656,9 @@ func main() {
 	go calculatePowerAvailable()
 	log.Println("********** Calculate Power started. *********")
 
-	// Start the heater kill loop to ensure the heater is not drawing from the battery.
-	go killHeaterOnDischarge()
-	log.Println("********** Kill heater on discharge started. *********")
+	//// Start the heater kill loop to ensure the heater is not drawing from the battery.
+	//go killHeaterOnDischarge()
+	//log.Println("********** Kill heater on discharge started. *********")
 
 	go logToDatabase()
 	log.Println("********** Database logger started started. *********")
@@ -721,7 +698,7 @@ func main() {
 			_, err := port.Read(buf[:])
 			if err != nil {
 				if err != serial.ErrTimeout {
-					fmt.Println(err)
+					log.Println(err)
 				}
 				break
 			} else {
@@ -733,6 +710,7 @@ func main() {
 				}
 				if bGotMessage {
 					//					msg.Print()
+					//					log.Print(msg.GetDetails())
 					switch msg.GetCode() {
 					//						case 0xfbe0 : fmt.Printf("To Slave %04x | Status = %02x | SetPoint = %0.2f | = %0.2f\n", msg.GetToAddress(), msg.GetStatus(), float32(msg.GetSetPoint()) / 100, float32(msg.GetCurrent()) / 100)
 					case 0xfde0:
@@ -750,6 +728,7 @@ func main() {
 		if s != nil {
 			slaves = s
 		}
+		//		log.Println("Tesla loop")
 		time.Sleep(100 * time.Millisecond)
 	}
 }

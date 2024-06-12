@@ -26,28 +26,25 @@ type PumpData struct {
 }
 
 type TempData struct {
-	Logged string  `json:"logged"`
-	TOU    float32 `json:"TOU"`
-	Tin1   float32 `json:"TIN_1"`
-	Tin2   float32 `json:"TIN_2"`
-	Tin3   float32 `json:"TIN_3"`
-	Tin4   float32 `json:"TIN_4"`
-	Tchci1 float32 `json:"TCHCI_1"`
-	Tchco1 float32 `json:"TCHCO_1"`
-	Tchgi1 float32 `json:"TCHGI_1"`
-	Tchgo1 float32 `json:"TCHGO_1"`
-	Tchei1 float32 `json:"TCHEI_1"`
-	Tcheo1 float32 `json:"TCHEO_1"`
-	Tsh0   float32 `json:"TSH_0"`
-	Tsh1   float32 `json:"TSH_1"`
-	Tsh2   float32 `json:"TSH_2"`
-	Tsc0   float32 `json:"TSC_0"`
-	Tsc1   float32 `json:"TSC_1"`
-	Tsc2   float32 `json:"TSC_2"`
-	Tsoc1  float32 `json:"TSOC_1"`
-	Tsopi  float32 `json:"TSOPI"`
-	Tsopo  float32 `json:"TSOPO"`
-	Tsos   float32 `json:"TSOS"`
+	Logged           string  `json:"logged"`
+	AmbientOutside   float32 `json:"AmbientOutside"`
+	Bedroom          float32 `json:"Bedroom"`
+	CondenserIn      float32 `json:"CondenserIn"`
+	CondenserOut     float32 `json:"CondenserOut"`
+	GeneratorIn      float32 `json:"GeneratorIn"`
+	GeneratorOut     float32 `json:"GeneratorOut"`
+	EvaporatorIn     float32 `json:"EvaporatorIn"`
+	EvaporatorOut    float32 `json:"EvaporatorOut"`
+	HotTankTop       float32 `json:"HotTankTop"`
+	HotTankBottom    float32 `json:"HotTankBottom"`
+	HotTankMiddle    float32 `json:"HotTankMiddle"`
+	BufferTankBottom float32 `json:"BufferTankBottom"`
+	BufferTankTop    float32 `json:"BufferTankTop"`
+	BufferTankMiddle float32 `json:"BufferTankMiddle"`
+	SolarCollector   float32 `json:"SolarCollector"`
+	SolarInlet       float32 `json:"SolarInlet"`
+	SolarOutlet      float32 `json:"SolarOutlet"`
+	SolarExchanger   float32 `json:"SolarExchanger"`
 }
 
 type SolarData struct {
@@ -74,7 +71,38 @@ type SolarStrings struct {
 	TotalPower float32 `json:"total"`
 }
 
-/**
+// GetTimeRange returns the start and end times passed as query parameters.
+func GetTimeRange(r *http.Request) (start time.Time, end time.Time, err error) {
+	params := r.URL.Query()
+	values := params["start"]
+	if len(values) != 1 {
+		err = fmt.Errorf("exactly one 'start=' value must be supplied for start time")
+		return
+	}
+	timeVal, err := time.Parse("2006-1-2 15:4", values[0])
+	if err != nil {
+		return
+	} else {
+		start = timeVal
+	}
+
+	values = params["end"]
+	if len(values) != 1 {
+		err = fmt.Errorf("exactly one 'start=' value must be supplied for start time")
+		return
+	}
+	timeVal, err = time.Parse("2006-1-2 15:4", values[0])
+	if err != nil {
+		return
+	} else {
+		end = timeVal
+	}
+	//log.Println("Date/time requested from ", start, " to ", end)
+	return
+}
+
+/*
+*
 getSolarStringData fetches the data from the string inverters
 */
 func getSolarStringData(data *SolarData) {
@@ -133,7 +161,8 @@ func getSolarStringData(data *SolarData) {
 	}
 }
 
-/**
+/*
+*
 getData returns the data for the main AC_Status page.
 */
 func getData(w http.ResponseWriter, _ *http.Request) {
@@ -153,24 +182,12 @@ func getData(w http.ResponseWriter, _ *http.Request) {
 	result.Pins.Port6 = rpio.ReadPin(24) == rpio.High
 
 	getSolarStringData(&result.Solar)
-	//if rows, err := pDB.Query("select logged, watts_a, watts_b, watts_c, watts_d, watts_e, watts_f, watts_g, watts_h, watts_i, watts_j, watts_k from solar_production order by logged desc limit 1"); err != nil {
-	//	ReturnJSONError(w, "Solar Data", err, http.StatusInternalServerError, true)
-	//	return
-	//} else {
-	//	defer func() {
-	//		if err := rows.Close(); err != nil {
-	//			log.Print(err)
-	//		}
-	//	}()
-	//	if rows.Next() {
-	//		if err := rows.Scan(&result.Solar.Logged, &result.Solar.A, &result.Solar.B, &result.Solar.C, &result.Solar.D, &result.Solar.E, &result.Solar.F, &result.Solar.G, &result.Solar.H, &result.Solar.I, &result.Solar.J, &result.Solar.K); err != nil {
-	//			ReturnJSONError(w, "Solar Data", err, http.StatusInternalServerError, true)
-	//			return
-	//		}
-	//	}
-	//}
 
-	if rows, err := pDB.Query("select logged, TOU, ifnull(TIN_1, 0), ifnull(TIN_2, 0), ifnull(TIN_3, 0), ifnull(TIN_4, 0), TCHCI_1, TCHCO_1, TCHGI_1, TCHGO_1, TCHEI_1, TCHEO_1, TSH0, TSH1, TSH2, TSC0, TSC1, TSC2, TSOC_1, TSOPI, TSOPO, TSOS FROM chillii_analogue_input ORDER BY logged DESC LIMIT 1"); err != nil {
+	if rows, err := pDB.Query(`SELECT Logged, AmbientOutside, Bedroom, 
+       					CondenserIn, CondenserOut, GeneratorIn, GeneratorOut, EvaportatorIn, EvaporatorOut,
+       					HotTankTop, HotTankMiddle, HotTankBottom, BufferTankTop, BufferTankMiddle, BufferTankBottom, 
+       					SolarCollector, SolarInlet, SolarOutlet, SolarExchanger
+					FROM temperatures ORDER BY Logged DESC LIMIT 1`); err != nil {
 		ReturnJSONError(w, "Temperature Data", err, http.StatusInternalServerError, true)
 		return
 	} else {
@@ -180,8 +197,12 @@ func getData(w http.ResponseWriter, _ *http.Request) {
 			}
 		}()
 		if rows.Next() {
-			if err := rows.Scan(&result.Temps.Logged, &result.Temps.TOU, &result.Temps.Tin1, &result.Temps.Tin2, &result.Temps.Tin3, &result.Temps.Tin4, &result.Temps.Tchci1, &result.Temps.Tchco1, &result.Temps.Tchgi1, &result.Temps.Tchgo1, &result.Temps.Tchei1, &result.Temps.Tcheo1, &result.Temps.Tsh0, &result.Temps.Tsh1, &result.Temps.Tsh2,
-				&result.Temps.Tsc0, &result.Temps.Tsc1, &result.Temps.Tsc2, &result.Temps.Tsoc1, &result.Temps.Tsopi, &result.Temps.Tsopo, &result.Temps.Tsos); err != nil {
+			if err := rows.Scan(&result.Temps.Logged, &result.Temps.AmbientOutside, &result.Temps.Bedroom,
+				&result.Temps.CondenserIn, &result.Temps.CondenserOut, &result.Temps.GeneratorIn, &result.Temps.GeneratorOut,
+				&result.Temps.EvaporatorIn, &result.Temps.EvaporatorOut,
+				&result.Temps.HotTankTop, &result.Temps.HotTankMiddle, &result.Temps.HotTankBottom,
+				&result.Temps.BufferTankTop, &result.Temps.BufferTankMiddle, &result.Temps.BufferTankBottom,
+				&result.Temps.SolarCollector, &result.Temps.SolarInlet, &result.Temps.SolarOutlet, &result.Temps.SolarExchanger); err != nil {
 				ReturnJSONError(w, "Temperature Data", err, http.StatusInternalServerError, true)
 				return
 			}
@@ -214,52 +235,33 @@ func getData(w http.ResponseWriter, _ *http.Request) {
 	}
 }
 
-type ColdTankValue struct {
+type BufferTankValue struct {
 	Logged string  `json:"logged"`
 	Tsc0   float32 `json:"TSC0"`
 	Tsc1   float32 `json:"TSC1"`
 	Tsc2   float32 `json:"TSC2"`
 }
 
-//getColdTankData returns the set of cold tank values between the provided start and end times as a JSON array
-//{
-//	"logged":string
-//	"TSC0":float
-//	"TSC1":float
-//	"TSC2":float
-//}
-func getColdTankData(w http.ResponseWriter, r *http.Request) {
-	var Results []*ColdTankValue
-	var start time.Time
-	var end time.Time
-	const DeviceString = "Cold Tank Data"
+// getBufferTankData returns the set of buffer tank values between the provided start and end times as a JSON array
+//
+//	{
+//		"logged":string
+//		"TSC0":float
+//		"TSC1":float
+//		"TSC2":float
+//	}
+func getBufferTankData(w http.ResponseWriter, r *http.Request) {
+	var Results []*BufferTankValue
+	const DeviceString = "Buffer Tank Data"
 
-	params := r.URL.Query()
-	values := params["start"]
-	if len(values) != 1 {
-		ReturnJSONErrorString(w, DeviceString, "Exactly one 'start=' value must be supplied for start time", http.StatusBadRequest, false)
+	start, end, err := GetTimeRange(r)
+	if err != nil {
+		ReturnJSONError(w, DeviceString, err, http.StatusBadRequest, false)
 		return
-	}
-	if timeVal, err := time.Parse("2006-1-2 15:4", values[0]); err != nil {
-		ReturnJSONError(w, DeviceString, err, http.StatusBadRequest, true)
-		return
-	} else {
-		start = timeVal
 	}
 
-	values = params["end"]
-	if len(values) != 1 {
-		ReturnJSONErrorString(w, DeviceString, "Exactly one 'start=' value must be supplied for start time", http.StatusBadRequest, false)
-		return
-	}
-	if timeVal, err := time.Parse("2006-1-2 15:4", values[0]); err != nil {
-		ReturnJSONError(w, DeviceString, err, http.StatusBadRequest, true)
-		return
-	} else {
-		end = timeVal
-	}
-
-	if rows, err := pDB.Query("select min(unix_timestamp(logged)) as logged, avg(TSC0), avg(TSC1), avg(TSC2) FROM chillii_analogue_input WHERE logged BETWEEN ? AND ? GROUP BY unix_timestamp(logged) DIV 60", start, end); err != nil {
+	if rows, err := pDB.Query(`select min(unix_timestamp(logged)) as logged, avg(BufferTankBottom), avg(BufferTankTop), avg(BufferTankMiddle)
+					FROM temperatures WHERE logged BETWEEN ? AND ? GROUP BY unix_timestamp(logged) DIV 60`, start, end); err != nil {
 		ReturnJSONError(w, DeviceString, err, http.StatusInternalServerError, true)
 		return
 	} else {
@@ -269,7 +271,7 @@ func getColdTankData(w http.ResponseWriter, r *http.Request) {
 			}
 		}()
 		for rows.Next() {
-			result := new(ColdTankValue)
+			result := new(BufferTankValue)
 			if err := rows.Scan(&result.Logged, &result.Tsc0, &result.Tsc1, &result.Tsc2); err != nil {
 				ReturnJSONError(w, DeviceString, err, http.StatusInternalServerError, true)
 				return
@@ -297,46 +299,27 @@ type HotTankValue struct {
 	Mean   float32 `json:"mean"`
 }
 
-//getHotTankData returns the set of hot tank values between the provided start and end times as a JSON array
-//{
-//	"logged":string
-//	"TSH0":float
-//	"TSH1":float
-//	"TSH2":float
-//	"mean":float
-//}
+// getHotTankData returns the set of hot tank values between the provided start and end times as a JSON array
+//
+//	{
+//		"logged":string
+//		"TSH0":float
+//		"TSH1":float
+//		"TSH2":float
+//		"mean":float
+//	}
 func getHotTankData(w http.ResponseWriter, r *http.Request) {
 	var Results []*HotTankValue
-	var start time.Time
-	var end time.Time
 	const DeviceString = "Hot Tank Data"
 
-	params := r.URL.Query()
-	values := params["start"]
-	if len(values) != 1 {
-		ReturnJSONErrorString(w, DeviceString, "Exactly one 'start=' value must be supplied for start time", http.StatusBadRequest, false)
+	start, end, err := GetTimeRange(r)
+	if err != nil {
+		ReturnJSONError(w, DeviceString, err, http.StatusBadRequest, false)
 		return
-	}
-	if timeVal, err := time.Parse("2006-1-2 15:4", values[0]); err != nil {
-		ReturnJSONError(w, DeviceString, err, http.StatusBadRequest, true)
-		return
-	} else {
-		start = timeVal
 	}
 
-	values = params["end"]
-	if len(values) != 1 {
-		ReturnJSONErrorString(w, DeviceString, "Exactly one 'start=' value must be supplied for start time", http.StatusBadRequest, false)
-		return
-	}
-	if timeVal, err := time.Parse("2006-1-2 15:4", values[0]); err != nil {
-		ReturnJSONError(w, DeviceString, err, http.StatusBadRequest, true)
-		return
-	} else {
-		end = timeVal
-	}
-
-	if rows, err := pDB.Query(`select min(unix_timestamp(logged)) as logged, AVG(TSH0), AVG(TSH1), AVG(TSH2) from chillii_analogue_input where logged between ? and ? group by unix_timestamp(logged) DIV 60`, start, end); err != nil {
+	if rows, err := pDB.Query(`select min(unix_timestamp(logged)) as logged, AVG(HotTankTop), AVG(HotTankBottom), AVG(HotTankMiddle)
+					from temperatures where logged between ? and ? group by unix_timestamp(logged) DIV 60`, start, end); err != nil {
 		ReturnJSONError(w, DeviceString, err, http.StatusInternalServerError, true)
 		return
 	} else {
@@ -369,58 +352,26 @@ func getHotTankData(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-//select unix_timestamp(`timestamp`) as `logged`,`TSOC_1` / 10 as TSOC_1,`TSOPI` / 10 as TSOPI,`TSOPO` / 10 as TSOPO,`TSOS` / 10 as TSOS
-//from `chillii_analogue_input`
-//where `timestamp` between
-
 type SolarTempValue struct {
-	Logged string  `json:"logged"`
-	Tsoc1  float32 `json:"TSOC_1"`
-	Tsopi  float32 `json:"TSOPI"`
-	Tsopo  float32 `json:"TSOPO"`
-	Tsos   float32 `json:"TSOS"`
+	Logged         string  `json:"logged"`
+	SolarCollector float32 `json:"SolarCollector"`
+	SolarInlet     float32 `json:"SolarInlet"`
+	SolarOutlet    float32 `json:"SolarOutlet"`
+	SolarExchanger float32 `json:"SolarExchanger"`
 }
 
-//getHotTankData returns the set of hot tank values between the provided start and end times as a JSON array
-//{
-//	"logged":string
-//	"TSOC_1":float
-//	"TSOPI":float
-//	"TSOPO":float
-//	"TSOS":float
-//}
 func getSolarTempData(w http.ResponseWriter, r *http.Request) {
 	var Results []*SolarTempValue
-	var start time.Time
-	var end time.Time
 	const DeviceString = "Solar Temperature Data"
 
-	params := r.URL.Query()
-	values := params["start"]
-	if len(values) != 1 {
-		ReturnJSONErrorString(w, DeviceString, "Exactly one 'start=' value must be supplied for start time", http.StatusBadRequest, false)
+	start, end, err := GetTimeRange(r)
+	if err != nil {
+		ReturnJSONError(w, DeviceString, err, http.StatusBadRequest, false)
 		return
-	}
-	if timeVal, err := time.Parse("2006-1-2 15:4", values[0]); err != nil {
-		ReturnJSONError(w, DeviceString, err, http.StatusBadRequest, true)
-		return
-	} else {
-		start = timeVal
 	}
 
-	values = params["end"]
-	if len(values) != 1 {
-		ReturnJSONErrorString(w, DeviceString, "Exactly one 'start=' value must be supplied for start time", http.StatusBadRequest, false)
-		return
-	}
-	if timeVal, err := time.Parse("2006-1-2 15:4", values[0]); err != nil {
-		ReturnJSONError(w, "Cold Tank Values", err, http.StatusBadRequest, true)
-		return
-	} else {
-		end = timeVal
-	}
-
-	if rows, err := pDB.Query(`select unix_timestamp(logged) as logged,TSOC_1 as TSOC_1,TSOPI as TSOPI,TSOPO as TSOPO,TSOS as TSOS from chillii_analogue_input where logged between ? AND ?`, start, end); err != nil {
+	if rows, err := pDB.Query(`select unix_timestamp(logged) as logged, SolarCollector, SolarInlet, SolarOutlet, SolarExchanger
+								from temperatures where Logged between ? AND ?`, start, end); err != nil {
 		ReturnJSONError(w, DeviceString, err, http.StatusInternalServerError, true)
 		return
 	} else {
@@ -431,16 +382,16 @@ func getSolarTempData(w http.ResponseWriter, r *http.Request) {
 		}()
 		for rows.Next() {
 			result := new(SolarTempValue)
-			if err := rows.Scan(&result.Logged, &result.Tsoc1, &result.Tsopi, &result.Tsopo, &result.Tsos); err != nil {
+			if err := rows.Scan(&result.Logged, &result.SolarCollector, &result.SolarInlet, &result.SolarOutlet, &result.SolarExchanger); err != nil {
 				ReturnJSONError(w, DeviceString, err, http.StatusInternalServerError, true)
 				return
 			}
 			// Calculate the weighted mean temperature
 
-			result.Tsoc1 /= 10.0
-			result.Tsopi /= 10.0
-			result.Tsopo /= 10.0
-			result.Tsos /= 10.0
+			result.SolarInlet /= 10.0
+			result.SolarOutlet /= 10.0
+			result.SolarCollector /= 10.0
+			result.SolarExchanger /= 10.0
 			Results = append(Results, result)
 		}
 		if resultJSON, err := json.Marshal(Results); err != nil {
@@ -536,33 +487,12 @@ func getSolar(w http.ResponseWriter, r *http.Request) {
     group by logged DIV 300`
 	var sql string
 	var Results []*SolarFullData
-	var start time.Time
-	var end time.Time
 	const DeviceString = "Solar Data"
 
-	params := r.URL.Query()
-	values := params["start"]
-	if len(values) != 1 {
-		ReturnJSONErrorString(w, DeviceString, "Exactly one 'start=' value must be supplied for start time", http.StatusBadRequest, false)
+	start, end, err := GetTimeRange(r)
+	if err != nil {
+		ReturnJSONError(w, DeviceString, err, http.StatusBadRequest, false)
 		return
-	}
-	if timeVal, err := time.Parse("2006-1-2 15:4", values[0]); err != nil {
-		ReturnJSONError(w, DeviceString, err, http.StatusBadRequest, true)
-		return
-	} else {
-		start = timeVal
-	}
-
-	values = params["end"]
-	if len(values) != 1 {
-		ReturnJSONErrorString(w, DeviceString, "Exactly one 'start=' value must be supplied for start time", http.StatusBadRequest, false)
-		return
-	}
-	if timeVal, err := time.Parse("2006-1-2 15:4", values[0]); err != nil {
-		ReturnJSONError(w, DeviceString, err, http.StatusBadRequest, true)
-		return
-	} else {
-		end = timeVal
 	}
 
 	if end.Sub(start) > (time.Hour * 4) {
@@ -620,55 +550,34 @@ type LoopTemps struct {
 }
 
 func getLoopTemps(w http.ResponseWriter, r *http.Request) {
-	const SQLDirect = `SELECT UNIX_TIMESTAMP(logged) AS logged
-            ,TCHGI_1 / 10 AS TCHGI_1,TCHGO_1 / 10 AS TCHGO_1
-            ,TCHEI_1 / 10 AS TCHEI_1,TCHEO_1 / 10 AS TCHEO_1
-            ,TCHCI_1 / 10 AS TCHCI_1,TCHCO_1 / 10 AS TCHCO_1
- 		 FROM chillii_analogue_input
+	const SQLDirect = `SELECT UNIX_TIMESTAMP(Logged) AS Logged
+            ,GeneratorIn / 10 AS GeneratorIn, GeneratorOut / 10 AS GeneratorOut
+            ,EvaportatorIn / 10 AS EvaportatorIn, EvaporatorOut / 10 AS EvaporatorOut
+            ,CondenserIn / 10 AS CondenserIn, CondenserOut / 10 AS CondenserOut
+ 		 FROM temperatures
  		WHERE logged BETWEEN ? AND ?`
 
-	const SQLBy5Mins = `SELECT logged,
-            ,AVG(TCHGI_1) / 10 AS TCHGI_1, AVG(TCHGO_1) / 10 AS TCHGO_1
-            ,AVG(TCHEI_1) / 10 AS TCHEI_1, AVG(TCHEO_1) / 10 AS TCHEO_1
-            ,AVG(TCHCI_1) / 10 AS TCHCI_1, AVG(TCHCO_1) / 10 AS TCHCO_1
+	const SQLBy5Mins = `SELECT Logged
+            ,AVG(GeneratorIn) / 10 AS GeneratorIn, AVG(GeneratorOut) / 10 AS GeneratorOut
+            ,AVG(EvaportatorIn) / 10 AS EvaportatorIn, AVG(EvaporatorOut) / 10 AS EvaporatorOut
+            ,AVG(CondenserIn) / 10 AS CondenserIn, AVG(CondenserOut) / 10 AS CondenserOut
 	  FROM (
-    	    SELECT UNIX_TIMESTAMP(logged) AS logged,
-        	    TCHGI_1, TCHGO_1,
-            	TCHEI_1, TCHEO_1,
-            	TCHCI_1, TCHCO_1
-		   FROM chillii_analogue_input
-          WHERE logged BETWEEN ? AND ?) AS analog
-	  GROUP BY logged DIV 300`
+    	    SELECT UNIX_TIMESTAMP(Logged) AS Logged,
+				GeneratorIn,GeneratorOut,
+				EvaportatorIn, EvaporatorOut,
+				CondenserIn, CondenserOut
+		   FROM temperatures
+          WHERE Logged BETWEEN ? AND ?) AS temps
+	  GROUP BY Logged DIV 300`
 
 	var sql string
 	var Results []*LoopTemps
-	var start time.Time
-	var end time.Time
 	const DeviceString = "Loop Temperature Data"
 
-	params := r.URL.Query()
-	values := params["start"]
-	if len(values) != 1 {
-		ReturnJSONErrorString(w, DeviceString, "Exactly one 'start=' value must be supplied for start time", http.StatusBadRequest, false)
+	start, end, err := GetTimeRange(r)
+	if err != nil {
+		ReturnJSONError(w, DeviceString, err, http.StatusBadRequest, false)
 		return
-	}
-	if timeVal, err := time.Parse("2006-1-2 15:4", values[0]); err != nil {
-		ReturnJSONError(w, DeviceString, err, http.StatusBadRequest, true)
-		return
-	} else {
-		start = timeVal
-	}
-
-	values = params["end"]
-	if len(values) != 1 {
-		ReturnJSONErrorString(w, DeviceString, "Exactly one 'start=' value must be supplied for start time", http.StatusBadRequest, false)
-		return
-	}
-	if timeVal, err := time.Parse("2006-1-2 15:4", values[0]); err != nil {
-		ReturnJSONError(w, DeviceString, err, http.StatusBadRequest, true)
-		return
-	} else {
-		end = timeVal
 	}
 
 	if end.Sub(start) > (time.Hour * 4) {
@@ -707,68 +616,26 @@ func getLoopTemps(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-type LoopPumps struct {
-	Logged float64 `json:"logged"`
-	PCHG1  float64 `json:"PCHG_1"`
-	PCHE1  float64 `json:"PCHE_1"`
-	PCHCP1 float64 `json:"PCHCP_1"`
-}
-
 type SolarPump struct {
 	Logged float64 `json:"logged"`
-	PSOP   float64 `json:"PSOP"`
+	Power  float64 `json:"power"`
 }
 
 func getPumpData(w http.ResponseWriter, r *http.Request) {
-	const SQLDirect = `SELECT UNIX_TIMESTAMP(logged) AS logged, PCHG_1, PCHE_1, PCHCP_1 FROM chillii_analogue_output WHERE logged BETWEEN ? AND ?`
-
-	const SQLBy5Mins = `SELECT MIN(UNIX_TIMESTAMP(logged)) AS logged, AVG(PCHG_1) AS PCHG_1, AVG(PCHE_1) AS PCHE_1, AVG(PCHCP_1) AS PCHCP_1
-				FROM chillii_analogue_output WHERE logged BETWEEN ? AND ? GROUP BY UNIX_TIMESTAMP(logged) DIV 300`
-
-	const SQLSolarDirect = `SELECT UNIX_TIMESTAMP(timestamp) AS logged, pump_power AS PSOP FROM solar_pump WHERE timestamp BETWEEN ? AND ?`
-
-	const SQLSolarBy5Mins = `SELECT MIN(UNIX_TIMESTAMP(timestamp)) AS logged, AVG(pump_power) AS PSOP FROM solar_pump
-		WHERE timestamp between ? AND ?	GROUP BY UNIX_TIMESTAMP(logged) DIV 300`
+	const SQLSolarDirect = `SELECT UNIX_TIMESTAMP(logged) AS logged, pump_power FROM solar_pump WHERE logged BETWEEN ? AND ?`
 
 	var sql string
-	var Results struct {
-		AcPumps    []*LoopPumps `json:"ac"`
-		SolarPumps []*SolarPump `json:"solar"`
-	}
-	var start time.Time
-	var end time.Time
+	var Results []*SolarPump
+
 	const DeviceString = "Loop Temperature Data"
 
-	params := r.URL.Query()
-	values := params["start"]
-	if len(values) != 1 {
-		ReturnJSONErrorString(w, DeviceString, "Exactly one 'start=' value must be supplied for start time", http.StatusBadRequest, false)
+	start, end, err := GetTimeRange(r)
+	if err != nil {
+		ReturnJSONError(w, DeviceString, err, http.StatusBadRequest, false)
 		return
-	}
-	if timeVal, err := time.Parse("2006-1-2 15:4", values[0]); err != nil {
-		ReturnJSONError(w, DeviceString, err, http.StatusBadRequest, true)
-		return
-	} else {
-		start = timeVal
 	}
 
-	values = params["end"]
-	if len(values) != 1 {
-		ReturnJSONErrorString(w, DeviceString, "Exactly one 'start=' value must be supplied for start time", http.StatusBadRequest, false)
-		return
-	}
-	if timeVal, err := time.Parse("2006-1-2 15:4", values[0]); err != nil {
-		ReturnJSONError(w, DeviceString, err, http.StatusBadRequest, true)
-		return
-	} else {
-		end = timeVal
-	}
-
-	if end.Sub(start) > (time.Hour * 4) {
-		sql = SQLSolarBy5Mins
-	} else {
-		sql = SQLSolarDirect
-	}
+	sql = SQLSolarDirect
 
 	if rows, err := pDB.Query(sql, start, end); err != nil {
 		ReturnJSONError(w, DeviceString, err, http.StatusInternalServerError, true)
@@ -780,13 +647,63 @@ func getPumpData(w http.ResponseWriter, r *http.Request) {
 			}
 		}()
 		for rows.Next() {
-			result := new(LoopPumps)
-			if err := rows.Scan(&result.Logged, &result.PCHG1, &result.PCHE1, &result.PCHCP1); err != nil {
+			result := new(SolarPump)
+			if err := rows.Scan(&result.Logged, &result.Power); err != nil {
 				ReturnJSONError(w, DeviceString, err, http.StatusInternalServerError, true)
 				return
 			}
-			Results.AcPumps = append(Results.AcPumps, result)
+			Results = append(Results, result)
 		}
+	}
+
+	if resultJSON, err := json.Marshal(Results); err != nil {
+		ReturnJSONError(w, DeviceString, err, http.StatusInternalServerError, true)
+	} else {
+		if _, err := fmt.Fprintf(w, string(resultJSON)); err != nil {
+			log.Print(err)
+		}
+	}
+}
+
+type CurrentData struct {
+	Logged    float64 `json:"logged"`
+	Amps      float64 `json:"amps"`
+	Volts     float64 `json:"volts"`
+	SOC       float64 `json:"state_of_charge"`
+	Hertz     float64 `json:"frequency"`
+	VSetpoint float64 `json:"setpoint"`
+}
+
+func getCurrent(w http.ResponseWriter, r *http.Request) {
+	const SQLDirect = `SELECT UNIX_TIMESTAMP(logged) AS logged
+							, iBatt AS amps
+							, vBatt AS volts
+							, state_of_charge AS soc
+							, frequency AS frequency
+							, vSetpoint AS setpoint
+						 FROM inverter_values
+						WHERE logged BETWEEN ? AND ?
+						ORDER BY logged DESC`
+
+	const SQLBy5Mins = `SELECT MIN(UNIX_TIMESTAMP(logged)) AS logged
+							, AVG(iBatt) AS amps
+							, AVG(vBatt) AS volts
+							, AVG(state_of_charge) AS soc
+							, AVG(frequency) AS frequency
+							, AVG(vSetpoint) AS setpoint
+						 FROM inverter_values
+						WHERE logged BETWEEN ? AND ?
+						GROUP BY UNIX_TIMESTAMP(logged) DIV 300
+						ORDER BY logged DESC`
+
+	var sql string
+	var Results []*CurrentData
+	const DeviceString = "Current Data"
+
+	start, end, err := GetTimeRange(r)
+	if err != nil {
+		ReturnJSONError(w, DeviceString, err, http.StatusBadRequest, false)
+		return
 	}
 
 	if end.Sub(start) > (time.Hour * 4) {
@@ -805,20 +722,169 @@ func getPumpData(w http.ResponseWriter, r *http.Request) {
 			}
 		}()
 		for rows.Next() {
-			result := new(SolarPump)
-			if err := rows.Scan(&result.Logged, &result.PSOP); err != nil {
+			result := new(CurrentData)
+			if err := rows.Scan(&result.Logged, &result.Amps, &result.Volts, &result.SOC, &result.Hertz, &result.VSetpoint); err != nil {
 				ReturnJSONError(w, DeviceString, err, http.StatusInternalServerError, true)
 				return
 			}
-			Results.SolarPumps = append(Results.SolarPumps, result)
+			Results = append(Results, result)
+		}
+		if resultJSON, err := json.Marshal(Results); err != nil {
+			ReturnJSONError(w, DeviceString, err, http.StatusInternalServerError, true)
+		} else {
+			if _, err := fmt.Fprintf(w, string(resultJSON)); err != nil {
+				log.Print(err)
+			}
 		}
 	}
+}
 
-	if resultJSON, err := json.Marshal(Results); err != nil {
+type TeslaData struct {
+	Logged   float64 `json:"logged"`
+	Setpoint uint8   `json:"iSetpoint"`
+	Charging float64 `json:"iCharging"`
+}
+
+func getTeslaData(w http.ResponseWriter, r *http.Request) {
+	var Results []*TeslaData
+	const rqst = `select *
+		from (select unix_timestamp(?) as logged
+		, iSetpoint
+		, iCharging
+		from tesla_values
+		where logged < ?
+		order by tesla_values.logged desc limit 1) s1
+		UNION
+		select unix_timestamp(logged) as logged
+			, iSetpoint
+			, iCharging
+			from tesla_values
+			where logged between ? and ?`
+
+	const DeviceString = "Tesla Data"
+
+	start, end, err := GetTimeRange(r)
+	if err != nil {
+		ReturnJSONError(w, DeviceString, err, http.StatusBadRequest, false)
+		return
+	}
+
+	if rows, err := pDB.Query(rqst, start, start, start, end); err != nil {
 		ReturnJSONError(w, DeviceString, err, http.StatusInternalServerError, true)
+		return
 	} else {
-		if _, err := fmt.Fprintf(w, string(resultJSON)); err != nil {
-			log.Print(err)
+		defer func() {
+			if err := rows.Close(); err != nil {
+				log.Print(err)
+			}
+		}()
+		for rows.Next() {
+			result := new(TeslaData)
+			if err := rows.Scan(&result.Logged, &result.Setpoint, &result.Charging); err != nil {
+				ReturnJSONError(w, DeviceString, err, http.StatusInternalServerError, true)
+				return
+			}
+			Results = append(Results, result)
+		}
+		if resultJSON, err := json.Marshal(Results); err != nil {
+			ReturnJSONError(w, DeviceString, err, http.StatusInternalServerError, true)
+		} else {
+			if _, err := fmt.Fprintf(w, string(resultJSON)); err != nil {
+				log.Print(err)
+			}
+		}
+	}
+}
+
+type VoltageData struct {
+	Logged    float64 `json:"logged"`
+	VBatt     float64 `json:"volts"`
+	VSetpoint float64 `json:"volts_setpoint"`
+}
+
+func getVoltageData(w http.ResponseWriter, r *http.Request) {
+	var Results []*VoltageData
+	const rqst = `select unix_timestamp(logged) as logged
+                       , vBatt as volts
+                       , vSetpoint as volts_setpoint
+                   from inverter_values
+                  where logged between ? and ?`
+
+	const DeviceString = "Voltage Data"
+
+	start, end, err := GetTimeRange(r)
+	if err != nil {
+		ReturnJSONError(w, DeviceString, err, http.StatusBadRequest, false)
+		return
+	}
+
+	if rows, err := pDB.Query(rqst, start, end); err != nil {
+		ReturnJSONError(w, DeviceString, err, http.StatusInternalServerError, true)
+		return
+	} else {
+		defer func() {
+			if err := rows.Close(); err != nil {
+				log.Print(err)
+			}
+		}()
+		for rows.Next() {
+			result := new(VoltageData)
+			if err := rows.Scan(&result.Logged, &result.VBatt, &result.VSetpoint); err != nil {
+				ReturnJSONError(w, DeviceString, err, http.StatusInternalServerError, true)
+				return
+			}
+			Results = append(Results, result)
+		}
+		if resultJSON, err := json.Marshal(Results); err != nil {
+			ReturnJSONError(w, DeviceString, err, http.StatusInternalServerError, true)
+		} else {
+			if _, err := fmt.Fprintf(w, string(resultJSON)); err != nil {
+				log.Print(err)
+			}
+		}
+	}
+}
+
+type HeaterData struct {
+	Logged float64 `json:"logged"`
+	Status string  `json:"status"`
+}
+
+func getHeaterData(w http.ResponseWriter, r *http.Request) {
+	var Results []*HeaterData
+	const rqst = `select unix_timestamp(logged) as logged, status from water_heater_operation where logged between ? and ?`
+
+	const DeviceString = "Heater Data"
+
+	start, end, err := GetTimeRange(r)
+	if err != nil {
+		ReturnJSONError(w, DeviceString, err, http.StatusBadRequest, false)
+		return
+	}
+
+	if rows, err := pDB.Query(rqst, start, end); err != nil {
+		ReturnJSONError(w, DeviceString, err, http.StatusInternalServerError, true)
+		return
+	} else {
+		defer func() {
+			if err := rows.Close(); err != nil {
+				log.Print(err)
+			}
+		}()
+		for rows.Next() {
+			result := new(HeaterData)
+			if err := rows.Scan(&result.Logged, &result.Status); err != nil {
+				ReturnJSONError(w, DeviceString, err, http.StatusInternalServerError, true)
+				return
+			}
+			Results = append(Results, result)
+		}
+		if resultJSON, err := json.Marshal(Results); err != nil {
+			ReturnJSONError(w, DeviceString, err, http.StatusInternalServerError, true)
+		} else {
+			if _, err := fmt.Fprintf(w, string(resultJSON)); err != nil {
+				log.Print(err)
+			}
 		}
 	}
 }

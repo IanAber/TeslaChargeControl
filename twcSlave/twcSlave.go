@@ -1,12 +1,10 @@
 package twcSlave
 
 import (
-	"SystemController/TeslaAPI"
 	"SystemController/twcMessage"
 	"fmt"
 	"github.com/goburrow/serial"
 	"log"
-	"net/smtp"
 	"time"
 )
 
@@ -49,7 +47,7 @@ type Slave struct {
 	allowedValue   uint16
 	status         byte
 	lastHeartBeat  time.Time
-	verbose        bool
+	log            bool
 	port           serial.Port
 	spikeTime      time.Time
 	spikeAmps      uint16
@@ -74,6 +72,7 @@ const (
 
 // New /*
 // const (
+//
 //	SlaveReady = iota // May NOT be plugged in
 //	SlaveCharging
 //	SlaveLostComms
@@ -85,14 +84,24 @@ const (
 //	SlaveStartingToCharge
 //	SlaveLimitingPower
 //	SlaveAdjustmentPeriodComplete
-//)
-func New(address uint16, verbose bool, port serial.Port) Slave {
-	s := Slave{address, 0.0, 0.0, 0.0, 0, time.Now(), verbose,
+//
+// )
+func New(address uint16, logEnabled bool, port serial.Port) Slave {
+	s := Slave{address, 0.0, 0.0, 0.0, 0, time.Now(), logEnabled,
 		port, time.Now(), 0, time.Unix(0, 0), true, false}
-	if verbose {
-		fmt.Println("New slave created.")
+	if logEnabled {
+		log.Println("New slave created.")
 	}
 	return s
+}
+
+// Enable enables or disable controlling its ability to supply power to the car.
+func (slave *Slave) Enable(bEnable bool) {
+	slave.disabled = !bEnable
+}
+
+func (slave *Slave) EnableLogging(bLoggingEnable bool) {
+	slave.log = bLoggingEnable
 }
 
 func (slave *Slave) RequestCharge() bool {
@@ -145,6 +154,13 @@ func (slave *Slave) SetCurrent(newValue uint16) {
 		slave.spikeTime = time.Now().Add(time.Second * 6)
 	}
 	slave.allowedValue = newValue
+	if newValue > 0 {
+		slave.timeSetTo0Amps = time.Time{}
+	} else {
+		if slave.timeSetTo0Amps.IsZero() {
+			slave.timeSetTo0Amps = time.Now()
+		}
+	}
 }
 
 func (slave *Slave) GetCurrent() uint16 {
@@ -174,124 +190,71 @@ func (slave *Slave) TimeSinceLastHeartbeat() time.Duration {
 	return time.Since(slave.lastHeartBeat)
 }
 
-func (slave *Slave) SendMasterHeartbeat(masterAddress uint16, api *TeslaAPI.TeslaAPI) {
-	msg := twcMessage.New(slave.port, slave.verbose)
+func (slave *Slave) SendMasterHeartbeat(masterAddress uint16) {
+	msg := twcMessage.New(slave.port, slave.log)
 	if masterAddress == 0 {
 		log.Panicln("Attempt to send hearbeat from a master address of 0! This can't be correct.")
 	}
-	if slave.allowedValue == 0 {
-		if slave.current > 20 {
-			if slave.stopped {
-				if time.Since(slave.timeSetTo0Amps) > (time.Minute * 4) {
-					if !api.APIDisabled {
-						log.Println("Stopping Tesla charging. current is shown as ", float32(slave.current)/100)
-						go func() {
-							err := api.StopCharging()
-							if err != nil {
-								log.Println(err)
-							}
-						}()
-					} else {
-						slave.disabled = true
-					}
-				}
-			}
+	// If we are disabled then we need to stop sending hearbeats.
+	if slave.disabled {
+		if slave.log {
+			log.Println("slave is disabled")
+		}
+		return
+	} else {
+		if slave.log {
+			log.Println("slave allowed value = ", slave.allowedValue)
 		}
 	}
-	// If we are disabled then we need to stop sending hearbeats.
-	//This should only happen when we failed to stop the car charging through the API.
-	if slave.disabled {
-		return
-	}
 	if slave.setPoint != slave.allowedValue {
+		// We are not charging at the allowed value so send an update
+		//		log.Printf("slave.setPoint = %d : slave.allowedValue %d", slave.setPoint, slave.allowedValue)
 		if slave.allowedValue >= 600 {
-			if slave.stopped {
-				slave.disabled = false
-				if time.Since(slave.timeSetTo0Amps) > (time.Minute * 4) {
-					if !api.APIDisabled && slave.current < 1 {
-						go func() {
-							err := api.StartCharging()
-							if err != nil {
-								if err.Error() != "TeslaAPI Failed! - is_charging" {
-									log.Println("Failed to call StartCharging in the Tesla API.", err)
-								}
-							}
-						}()
-					} else {
-						slave.disabled = true
-					}
-				}
-			}
 			// Tell the car to charge at the provided current
 			if (slave.spikeTime.After(time.Now())) && (slave.spikeAmps > 0) {
-				if slave.verbose {
-					fmt.Println("Master Heartbeat - MasterChangeSetpoint/LimitChargeCurrent (spike) => ", slave.spikeAmps)
+				// We are in a spike cycle to get the car charging from stop.
+				if slave.log {
+					log.Println("Master Heartbeat - MasterChangeSetpoint/LimitChargeCurrent (spike) => ", slave.spikeAmps)
 				}
 				msg.SendMasterHeartbeat(masterAddress, slave.address, MasterChangeSetpoint, 0, slave.spikeAmps)
 				msg.SendMasterHeartbeat(masterAddress, slave.address, MasterLimitChargeCurrent, 0, slave.spikeAmps)
 			} else {
+				// Spike time has expired
 				slave.spikeAmps = 0
-				if slave.verbose {
-					fmt.Println("Master Heartbeat - MasterChangeSetpoint/LimitChargeCurrent => ", slave.allowedValue)
+				if slave.log {
+					log.Println("Master Heartbeat - MasterChangeSetpoint/LimitChargeCurrent => ", slave.allowedValue)
 				}
 				msg.SendMasterHeartbeat(masterAddress, slave.address, MasterChangeSetpoint, 0, slave.allowedValue)
 				msg.SendMasterHeartbeat(masterAddress, slave.address, MasterLimitChargeCurrent, 0, slave.allowedValue)
 			}
 			slave.stopped = false
-			slave.timeSetTo0Amps = time.Unix(0, 0)
 		} else {
-			// With Protocol-2 we cannot stop the car charging
-			// Tell the car to stop charging as we cannot supply at least 6 amps
-			if slave.verbose {
-				fmt.Println("Master Heartbeat - MasterChangeSetpoint/LimitChargeCurrent => 0")
+			// 6A is the minimum, and we are below that, so we need to stop charging
+			if slave.log {
+				log.Println("Master Heartbeat - MasterChangeSetpoint/LimitChargeCurrent => 6A")
 			}
-			msg.SendMasterHeartbeat(masterAddress, slave.GetAddress(), MasterChangeSetpoint, 0, 0)
-			msg.SendMasterHeartbeat(masterAddress, slave.address, MasterLimitChargeCurrent, 0, 0)
-			if slave.timeSetTo0Amps == time.Unix(0, 0) {
-				slave.timeSetTo0Amps = time.Now()
-			} else if slave.current > 20 {
-				// If we increasing teslaset the amps to 0 more than 1 minute ago and we are still charging then use the API to stop the car charging.
-				if (time.Since(slave.timeSetTo0Amps) > (4 * time.Minute)) && (slave.current > 50) && !api.IsHoldoff() {
-					log.Println("Turn off the car. this.current = ", slave.current)
-					if slave.current > 50 {
-						log.Println("Sending STOP via the Tesla API.")
-						if time.Since(slave.timeSetTo0Amps) > (time.Minute * 4) {
-							if !api.APIDisabled {
-								log.Println("Stopping Tesla charging. current is shown as ", float64(slave.current))
-								go func() {
-									err := api.StopCharging()
-									if err != nil {
-										log.Println(err)
-									}
-								}()
-								slave.stopped = true
-							} else {
-								slave.disabled = true
-							}
-						}
+			if slave.allowedValue == 0 {
+				if !slave.timeSetTo0Amps.IsZero() && time.Since(slave.timeSetTo0Amps) > (time.Minute*5) {
+					if slave.log {
+						log.Println("disabling slave because allowedValue is set to 0A for more than 5 minutes")
 					}
-				}
-				// If we set amps to 0 more than 5 minutes ago and we STILL have not stopped charging then stop the Tesla communications and send an email
-				if (time.Since(slave.timeSetTo0Amps) > (time.Minute * 5)) && !slave.stopped {
-					log.Println("Tried to stop the car from charging 5 minutes ago but it is still going.")
-					smtperr := smtp.SendMail("mail.cedartechnology.com:587",
-						smtp.PlainAuth("", "pi@cedartechnology.com", "7444561", "mail.cedartechnology.com"),
-						"pi@cedartechnology.com", []string{"ian.abercrombie@cedartechnology.com"}, []byte("From: Aberhome1\r\nTo: Ian.Abercrombie@CedarTechnology.com\r\nSubject: Tesla Stop Charging Failed\r\n\r\nTried t stop the car from charging 5 minutes ago but it is still going."))
-					if smtperr != nil {
-						log.Println("Failed to send email about the error above. ", smtperr)
+					msg.SendMasterHeartbeat(masterAddress, slave.GetAddress(), MasterChangeSetpoint, 0, 0)
+					msg.SendMasterHeartbeat(masterAddress, slave.address, MasterLimitChargeCurrent, 0, 0)
+					slave.disabled = true
+				} else {
+					if slave.log {
+						log.Printf("the Tesla is at the minimum level. Wating for %d seconds before disabling it", ((time.Minute*5)-time.Since(slave.timeSetTo0Amps))/time.Second)
 					}
+					msg.SendMasterHeartbeat(masterAddress, slave.address, MasterChangeSetpoint, 0, 600)
+					msg.SendMasterHeartbeat(masterAddress, slave.address, MasterLimitChargeCurrent, 0, 600)
 				}
 			}
 		}
 	} else {
 		// Status Quo...
-		if slave.verbose {
-			fmt.Println("Status quo heartbeat")
+		if slave.log {
+			log.Println("Status quo heartbeat")
 		}
 		msg.SendMasterHeartbeat(masterAddress, slave.GetAddress(), MasterStatusQuo, 0x0, 0x0)
 	}
-}
-
-func (slave *Slave) StopFlag() bool {
-	return slave.stopped
 }

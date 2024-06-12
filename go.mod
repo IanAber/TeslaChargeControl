@@ -10,5 +10,6 @@ require (
 	github.com/golang/glog v1.0.0
 	github.com/gorilla/mux v1.8.0
 	github.com/stianeikeland/go-rpio v4.2.0+incompatible
+	go.einride.tech/pid v0.1.0
 	golang.org/x/oauth2 v0.0.0-20211104180415-d3ed0bb246c8
 )

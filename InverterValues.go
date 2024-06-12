@@ -8,13 +8,13 @@ import (
 )
 
 type InverterValues struct {
-	volts          float32
-	amps           float32
-	soc            float32
-	vsetpoint      float32
-	frequency      float64
-	iMax           float32
-	OnRelay1       bool
+	volts          float32 // battery voltage
+	amps           float32 // battery current
+	soc            float32 // battery state of charge
+	vsetpoint      float32 // setpoint for charging the battery
+	frequency      float64 // mains frequency
+	iMax           float32 // maximum battery charging current
+	OnRelay1       bool    // Generator relay
 	OnRelay2       bool
 	OnRelay1Slave1 bool
 	OnRelay2Slave1 bool
@@ -61,33 +61,43 @@ func (i *InverterValues) LoadFunctionConstants(filename string) error {
 	return i.qf.LoadConstants(filename)
 }
 
+// GetVolts returns the battery voltage
 func (i *InverterValues) GetVolts() float32 {
 	i.mu.Lock()
 	defer i.mu.Unlock()
 	return i.volts
 }
 
+// GetAmps returns the battery current in Amps. Negative = Charging
 func (i *InverterValues) GetAmps() float32 {
 	i.mu.Lock()
 	defer i.mu.Unlock()
 	return i.amps
 }
+
+// GetSOC returns the battery state of charge in percent
 func (i *InverterValues) GetSOC() float32 {
 	i.mu.Lock()
 	defer i.mu.Unlock()
 	return i.soc
 }
+
+// GetSetPoint returns the battery charging voltage setpoint in Volts
 func (i *InverterValues) GetSetPoint() float32 {
 	i.mu.Lock()
 	defer i.mu.Unlock()
 	return i.vsetpoint
 }
+
+// GetFrequency returns the mains frequency in Hz
 func (i *InverterValues) GetFrequency() float64 {
 	i.mu.Lock()
 	defer i.mu.Unlock()
 	return i.frequency
 	//	return 57.0
 }
+
+// GetIMax returns the maximum allowed battery charging current
 func (i *InverterValues) GetIMax() float32 {
 	i.mu.Lock()
 	defer i.mu.Unlock()
@@ -194,12 +204,17 @@ func (i *InverterValues) GetChargeLevel() int {
 	i.vBattMax, i.vBattMin = i.qf.Eval(i.soc)
 	i.vBattDelta = i.vsetpoint - i.volts
 	switch {
-	case (i.frequency > 61) && (i.amps < 0):
+	case (i.frequency > 60.5) && (i.amps < 0):
 		if i.Log {
-			log.Printf("(i.frequency(%f) > 61Hz) && (i.amps(%f) < 0) - Raise consumption\n", i.frequency, i.amps)
+			log.Printf("(i.frequency(%f) > 60.5Hz) && (i.amps(%f) < 0) - Raise consumption\n", i.frequency, i.amps)
 		}
 		return 1 // Inverters are throttled and battery is charging
-	case (i.frequency < 59.5) && (i.amps > 0):
+	case (i.soc > 98 && i.amps < 100):
+		if i.Log {
+			log.Printf("i.soc > 98%%(%f%%) && i.amps < 100A(%fA) discharge. Raise consumption\n", i.soc, i.amps)
+		}
+		return 1
+	case (i.frequency <= 60.1) && (i.amps > 0):
 		if i.Log {
 			log.Printf("(i.frequency(%f) < 59.5Hz) && (i.amps(%f) > 0) - Lower consumption\n", i.frequency, i.amps)
 		}
@@ -212,7 +227,7 @@ func (i *InverterValues) GetChargeLevel() int {
 		// are not throttled and charge current is less than 60Amps
 	case (i.vBattDelta < i.vBattMin) || (i.amps < -80):
 		if i.Log {
-			log.Printf("(i.vBattDelta(%f) < i.vBattMin(%f)) - Raise consumption\n", i.vBattDelta, i.vBattMin)
+			log.Printf("(i.vBattDelta(%f) < i.vBattMin(%f)) || i.amps(%f) < -80 - Raise consumption\n", i.vBattDelta, i.vBattMin, i.amps)
 		}
 		return 1 // Battery voltage is above the acceptable setpoint, or we are charging at more than 80 amps
 	default:

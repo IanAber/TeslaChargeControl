@@ -1,0 +1,309 @@
+<html lang="en">
+<head>
+    <title id='Description'>Cedar Technology Solar Production Tracker</title>
+    <link rel="stylesheet" href="../jqwidgets/styles/jqx.base.css" type="text/css" />
+    <link rel="stylesheet" href="../jqwidgets/styles/jqx.web.css" type="text/css" />
+    <script type="text/javascript" src="../scripts/jquery-1.11.1.min.js"></script>
+    <script type="text/javascript" src="../jqwidgets/jqxcore.js"></script>
+    <script type="text/javascript" src="../jqwidgets/jqxchart.core.js"></script>
+    <script type="text/javascript" src="../jqwidgets/jqxdraw.js"></script>
+    <script type="text/javascript" src="../jqwidgets/jqxdata.js"></script>
+    <script type="text/javascript">
+		var solarTimeOut;
+		var trackerURL = "../realtime/getSolar"
+
+		function buildSolarURL() {
+			end = new Date();
+			start = new Date(end - document.getElementById("timeRange").value)
+			trackerURL = "../realtime/getSolar";
+
+			return encodeURI(trackerURL+"?start="
+							+ start.getFullYear() + "-" + (start.getMonth() + 1) + "-" + start.getDate() + " " + start.getHours() + ":" + start.getMinutes()
+							+ "&end=" + end.getFullYear() + "-" + (end.getMonth() + 1) + "-" + end.getDate() + " " + end.getHours() + ":" + end.getMinutes());
+		}
+
+		function xAxisFormatFunction(value, itemIndex, series, group) {
+			var dt = new Date(value * 1000);
+			return dt.getHours().toLocaleString('en-US', {minimumIntegerDigits: 2, useGrouping:false}) + ":"
+														+ dt.getMinutes().toLocaleString('en-US', {minimumIntegerDigits: 2, useGrouping:false});
+		}
+
+        $(document).ready(function () {
+			var solarSettings = {
+				title: "Cedar Technology",
+				description: "Solar Array String Power Generation.",
+				enableAnimations: false,
+				animationDuration: 1000,
+				enableAxisTextAnimation: true,
+				showLegend: true,
+				padding: { left: 5, top: 5, right: 5, bottom: 5 },
+				titlePadding: { left: 90, top: 0, right: 0, bottom: 10 },
+				colorScheme: 'scheme04',
+				categoryAxis: {
+					dataField: 'logged',
+					showGridLines: false,
+					textRotationAngle: 270,
+					unitInterval: 1800,
+					formatFunction: xAxisFormatFunction
+				},
+				colorScheme: 'scheme01',
+				seriesGroups: [{
+					type: 'spline',
+					valueAxis: {
+						interval: 1,
+						gridLines: {
+							visible: true,
+							step: 1,
+						},
+						labels: {
+							formatSettings: {
+								decimalPlaces: 0,
+							},
+							visible: true,
+							step: 1,
+						},
+						minValue: 0,
+						maxValue: 3300,
+						description: 'Power in Watts',
+					},
+					series: [{
+						dataField: 'watts_j',
+						displayText: 'Inverter 1.A',
+						lineColor: '#80E080',
+						fillColor: '#80E080',
+					},					
+					{
+						dataField: 'watts_k',
+						displayText: 'Inverter 1.B',
+						lineColor: '#000000',
+						fillColor: '#101010',
+					},
+					{
+						dataField: 'watts_a',
+						displayText: 'Inverter 2.A',
+						lineColor: '#D02020',
+						fillColor: '#D02020',
+					},
+					{
+						dataField: 'watts_b',
+						displayText: 'Inverter 2.B',
+						lineColor: '#2020D0',
+						fillColor: '#2020D0',
+					},
+					{
+						dataField: 'watts_c',
+						displayText: 'Inverter 2.C',
+						lineColor: '#20D020',
+						fillColor: '#20D020',
+					},
+					{
+						dataField: 'watts_d',
+						displayText: 'Inverter 3.A',
+						lineColor: '#D0D020',
+						fillColor: '#D0D020',
+					},
+					{
+						dataField: 'watts_e',
+						displayText: 'Inverter 3.B',
+						lineColor: '#20D0D0',
+						fillColor: '#20D0D0',
+					},
+					{
+						dataField: 'watts_f',
+						displayText: 'Inverter 3.C',
+						lineColor: '#D020D0',
+						fillColor: '#D020D0',
+					},
+					{
+						dataField: 'watts_g',
+						displayText: 'Inverter 4.A',
+						lineColor: '#A0A040',
+						fillColor: '#A0A040',
+					},
+					{
+						dataField: 'watts_h',
+						displayText: 'Inverter 4.B',
+						lineColor: '#40A0A0',
+						fillColor: '#40A0A0',
+					},
+					{
+						dataField: 'watts_i',
+						displayText: 'Inverter 4.C',
+						lineColor: '#A040A0',
+						fillColor: '#A040A0',
+					}]
+				}]
+			};
+
+
+			$('#solarChartContainer').jqxChart(solarSettings);
+			solarTimeOut = setInterval(getSolar, 15000);
+			getSolar();
+		});
+								
+		function getSolar() {
+			fetch(buildSolarURL())
+				.then( function(response) {
+					if (response.status == 200) {
+						response.json()
+							.then(function(data) {
+
+                            	now = new Date();
+                            	end = Math.trunc(now.getTime() / 1000);
+                            	start = end - document.getElementById("timeRange").value / 1000
+								switch (document.getElementById("param").value) {
+									case "current" : _description = "Current in Amps";
+													_maxValue = "10";
+													_decimalPlaces = 2;
+													_value = 'amps';
+													break;
+									case "volts" : _description = "Voltage in Volts";
+													_maxValue = "600";
+													_decimalPlaces = 0;
+													_value = 'volts';
+													break;
+									default : 	_description = "Power in Watts";
+												_maxValue = "3300";
+												_decimalPlaces = 0;
+												_value = 'watts';
+								};
+			    				$('#solarChartContainer').jqxChart({source:data});
+								$('#solarChartContainer').jqxChart({seriesGroups: [{
+										type: 'spline',
+										valueAxis: {
+											interval: 1,
+											gridLines: {
+												visible: true,
+												step: 1,
+											},
+											labels: {
+												formatSettings: {
+													decimalPlaces: _decimalPlaces,
+												},
+												visible: true,
+												step: 1,
+											},
+											minValue: 0,
+											maxValue: _maxValue,
+											description: _description,
+										},
+										series: [{
+											dataField: _value + '_j',
+											displayText: 'Inverter 1.A',
+											lineColor: '#80E080',
+											fillColor: '#80E080',
+										},					
+										{
+											dataField: _value + '_k',
+											displayText: 'Inverter 1.B',
+											lineColor: '#000000',
+											fillColor: '#101010',
+										},
+										{
+											dataField: _value + '_a',
+											displayText: 'Inverter 2.A',
+											lineColor: '#D02020',
+											fillColor: '#D02020',
+										},
+										{
+											dataField: _value + '_b',
+											displayText: 'Inverter 2.B',
+											lineColor: '#2020D0',
+											fillColor: '#2020D0',
+										},
+										{
+											dataField: _value + '_c',
+											displayText: 'Inverter 2.C',
+											lineColor: '#20D020',
+											fillColor: '#20D020',
+										},
+										{
+											dataField: _value + '_d',
+											displayText: 'Inverter 3.A',
+											lineColor: '#D0D020',
+											fillColor: '#D0D020',
+										},
+										{
+											dataField: _value + '_e',
+											displayText: 'Inverter 3.B',
+											lineColor: '#20D0D0',
+											fillColor: '#20D0D0',
+										},
+										{
+											dataField: _value + '_f',
+											displayText: 'Inverter 3.C',
+											lineColor: '#D020D0',
+											fillColor: '#D020D0',
+										},
+										{
+											dataField: _value + '_g',
+											displayText: 'Inverter 4.A',
+											lineColor: '#A0A040',
+											fillColor: '#A0A040',
+										},
+										{
+											dataField: _value + '_h',
+											displayText: 'Inverter 4.B',
+											lineColor: '#40A0A0',
+											fillColor: '#40A0A0',
+										},
+										{
+											dataField: _value + '_i',
+											displayText: 'Inverter 4.C',
+											lineColor: '#A040A0',
+											fillColor: '#A040A0',
+										}]
+									}]});
+								$('#solarChartContainer').jqxChart('refresh');
+                            	$('#solarChartContainer').jqxChart({categoryAxis:{
+                                	dataField: 'logged',
+                        	        showGridLines: false,
+                            	    textRotationAngle: 270,
+                                	unitInterval: document.getElementById("timeRange").value / 24000,
+                                	formatFunction: xAxisFormatFunction,
+                                	minValue: start,
+                                	maxValue: end}});
+                            	$('#solarChartContainer').jqxChart('update');
+                        });
+                    }
+                })
+				.catch(function(err) {
+					if(err.name === "TypeError" && err.message != "cancelled") {
+						alert('Solar Fetch Error :-S' + err.message);
+					}
+				});
+		};
+		
+		function goBack() {
+			window.clearInterval(solarTimeOut);
+			if (window.history.length > 1) {
+				setTimeout(window.history.back(), 1000);
+			} else {
+				setTimeout(window.close(), 1000);
+			}
+		}
+    </script>
+</head>
+    <body style="background:white;">
+        <div id='solarChartContainer' style="width:100%; height: 96%" ></div>
+		<div style="text-align:center; width:100%; height: 4%">
+			<select id="param" onchange="getSolar()">
+				<option value="power" selected="selected">Power (W)</option>
+				<option value="current">Current (A)</option>
+				<option value="volts">Voltage (V)</option>
+			</select>
+            <button onClick="goBack()" style="width:50%;height:100%" >Back</button>
+            <select id="timeRange" onchange="getSolar()">
+                <option value=259200000>3 Days</option>
+                <option value=172800000>2 Days</option>
+                <option value=86400000>24 Hours</option>
+                <option value=43200000>12 Hours</option>
+                <option value=28800000>8 Hours</option>
+                <option value=14400000>4 Hours</option>
+                <option value=7200000 selected="selected">2 Hours</option>
+                <option value=3600000>1 Hour</option>
+                <option value=1800000>30 Minutes</option>
+            </select>
+        </div>
+    </body>
+</html>

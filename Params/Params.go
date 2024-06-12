@@ -15,7 +15,18 @@ type Params struct {
 	maxAmps    float32   // Maximum amps the car is allowed to draw
 	systemMax  float32   // Maximum amps the system can deliver
 	lastChange time.Time // Time the last change was made.
+	log        bool      //Enable logging
 	mu         sync.Mutex
+}
+
+// EnableLogging turns logging on or off
+func (p *Params) EnableLogging(enable bool) {
+	p.log = enable
+}
+
+// IsLogging returns true if logging on?
+func (p *Params) IsLogging() bool {
+	return p.log
 }
 
 // SetSystemAmps Set the maximum allowd charge current ceiling
@@ -52,7 +63,7 @@ func (p *Params) GetValues() (current float32, maxAmps float32) {
 }
 
 // SetCurrent /**
-// Set the actual charging current as read fromt he Tesla charger
+// Set the actual charging current as read from the Tesla charger
 func (p *Params) SetCurrent(i float32) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
@@ -78,7 +89,7 @@ func (p *Params) SetMaxAmps(i float32) {
 func (p *Params) Reset() {
 	p.mu.Lock()
 	p.mu.Unlock()
-	p.maxAmps = 25.0 // This will be the starting current when the car is frst plugged in nd charging starts.
+	p.maxAmps = 25.0 // This will be the starting current when the car is frst plugged in and charging starts.
 	p.lastChange = time.Now()
 	p.systemMax = maxSystemAmps // This is the highest current we can supply to the car.
 }
@@ -92,6 +103,9 @@ func (p *Params) ChangeCurrent(delta int16) bool {
 	maxAmps := int16(p.maxAmps)
 	systemMax := int16(p.systemMax)
 
+	if p.log {
+		log.Printf("Tesla - ChangeCurrent(%d)\n", delta)
+	}
 	if delta > 0 {
 		// Going up... limit to 3A at a time
 		if delta > 3 {
@@ -112,14 +126,20 @@ func (p *Params) ChangeCurrent(delta int16) bool {
 			}
 			if maxAmps > systemMax {
 				// Don't go over the system maximum
-				log.Println("Limiting Tesla to", systemMax, "Amps")
+				if p.log {
+					log.Println("Limiting Tesla to", systemMax, "Amps")
+				}
 				maxAmps = systemMax
 			}
-			log.Println("Increasing Tesla current to", maxAmps, "Amps")
+			if p.log {
+				log.Println("Increasing Tesla current to", maxAmps, "Amps")
+			}
 			p.lastChange = time.Now()
 			p.maxAmps = float32(maxAmps)
 		} else {
-			log.Println("Reducing Tesla update times - last update", p.lastChange)
+			if p.log {
+				log.Println("Reducing Tesla update times - last update", p.lastChange)
+			}
 		}
 	} else {
 		if maxAmps == 0 {
@@ -129,7 +149,7 @@ func (p *Params) ChangeCurrent(delta int16) bool {
 		// Wait 15 seconds between each change going downward.
 		// Hold the current for 45 seconds if it would shut the car down to lower it further.
 		// Pretend we did it if less than 15 seconds since the last change
-		if ((maxAmps < 7) && (p.lastChange.Add(time.Second * 45).Before(time.Now()))) || ((maxAmps >= 7) && (p.lastChange.Add(time.Second * 15).Before(time.Now()))) {
+		if ((maxAmps < 7) && (p.lastChange.Add(time.Second * 45).Before(time.Now()))) || (maxAmps >= 7 /* && (p.lastChange.Add(time.Second * 15).Before(time.Now()))*/) {
 			// It has been at least 15 seconds since the last change so drop the current. Hold the current for 45 seconds if it would shut the car down to lower it further.
 			maxAmps += delta
 			if maxAmps < minAmps {
@@ -137,7 +157,9 @@ func (p *Params) ChangeCurrent(delta int16) bool {
 				maxAmps = 0
 			}
 			p.maxAmps = float32(maxAmps)
-			log.Println("Decreasing Tesla current to", maxAmps, "Amps")
+			if p.log {
+				log.Println("Decreasing Tesla current to", maxAmps, "Amps")
+			}
 			// Record the time
 			p.lastChange = time.Now()
 		}

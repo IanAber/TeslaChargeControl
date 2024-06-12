@@ -1,0 +1,1015 @@
+<!--
+	*index.html
+	*author: Ian Abercrombie
+	*project: Battery Monitor
+-->
+<html>
+  <head>
+    <link rel="stylesheet" href="/jqwidgets/styles/jqx.base.css" type="text/css" />
+    <script type="text/javascript" src="/jqwidgets/jqxcore.js"></script>
+    <script type="text/javascript" src="/jqwidgets/jqxdata.js"></script>
+    <script type="text/javascript" src="/jqwidgets/jqxdraw.js"></script>
+    <script type="text/javascript" src="/jqwidgets/jqxgauge.js"></script>
+    <script type="text/javascript" src="/jqwidgets/jqxbuttons.js"></script>
+    <script type="text/javascript" src="/jqwidgets/jqxbargauge.js"></script>
+    <script type="text/javascript">
+    
+    var LastData = null;
+    var LastRealTimeData = null;
+    var getDataTimeout =  0;
+	var getRealTimeDataTimeout = 0;
+	var reloadTimer;
+
+    	function openReport(reportXMLFileName)
+    	{
+	    	var today = new Date();
+			var dd = today.getDate();
+			var mm = today.getMonth()+1; //January is 0!
+			var yyyy = today.getFullYear();
+			var endHR = today.getHours() + 1;
+			var startHR = endHR - 6;
+			var startMin = ":00:00";
+			var endMin = ":00:00";
+
+			if(dd<10) {
+			    dd = '0'+dd
+			} 
+
+			if(mm<10) {
+			    mm = '0'+mm
+			}
+			
+			if(endHR > 23)
+			{
+				endHR = 23;
+				endMin = ":59:59";
+			}
+			
+			if(startHR < 0)
+			{
+				startHR= 0;
+			}
+
+			today = yyyy + '-' + mm + '-' + dd;
+    		window.open('/reportico/run.php?execute_mode=EXECUTE&project=AC&xmlin=' + reportXMLFileName + '&DateToRun=' + today + '&StartAt=' + startHR + startMin + '&EndAt=' + endHR + endMin);
+    	}
+
+		// ../realtime/get_data.php
+		function getData() {
+			fetch('/realtime/getdata')
+				.then( function(response) {
+					if (response.status == 200) {
+						response.json()
+							.then(function(Data) {
+								setData(Data);
+								LastData = Data;
+								clearTimeout(reloadTimer);
+								reloadTimer = setTimeout(reloadPage, 10000);
+							});
+					}
+				})
+				.catch(function(err) {
+					console.log('Fetch Error :-S' + err);
+				});
+			setTimeout(getData, 2000);
+		};
+
+		function getRealTimeData() {
+			fetch('/')
+				.then( function(response) {
+					if (response.status == 200) {
+						response.json()
+							.then(function(Data) {
+								setRealTimeData(Data);
+								LastRealTimeData = Data;
+							});
+					}
+				})
+				.catch(function(err) {
+					console.log('Fetch Error :-S' + err);
+				});
+			setTimeout(getRealTimeData, 1000);
+		}
+
+		function setStatusOnOff(status, system) {
+		    if(status === true) {
+				document.getElementById(system).innerText = "ON";
+				document.getElementById(system).style.color = "red"
+		    } else {
+				document.getElementById(system).innerText = "OFF";
+				document.getElementById(system).style.color = "black"
+ 		    }
+		}
+		
+		function setRealTimeData(result) {
+
+			// Handle the electrolyser breaker
+			// breaker = $("#electrolyserSwitch")
+			// if(result.electrolyser.enabled) {
+			// 	breaker.attr("src", "images/breaker_on.png")
+			// } else {
+			// 	breaker.attr("src", "images/breaker_off.png")
+			// }
+			// // Handke the heater breaker
+			// breaker = $("#heaterSwitch");
+            // if(result.heater.enabled == "ON") {
+			// 	breaker.attr("src", "images/breaker_on.png");
+            // } else {
+			// 	breaker.attr("src", "images/breaker_off.png");
+            // }
+
+			if((LastRealTimeData == null) || (LastRealTimeData.inverter.iBatt != result.inverter.iBatt)) {
+		    	a = 0 - result.inverter.iBatt;
+		    	if( a >= 0) {
+					sCaption = a + "A Charging";
+				} else {
+					sCaption = result.inverter.iBatt + "A Discharging";
+				}
+				$("#InverterCurrent").jqxGauge({caption:{value:sCaption}});
+				$("#InverterCurrent").val(0 - result.inverter.iBatt);
+		    }
+			if((LastRealTimeData == null) || (LastRealTimeData.inverter.vBatt != result.inverter.vBatt) || (LastRealTimeData.inverter.vSetpoint != result.inverter.vSetpoint)) {
+				$("#InverterVolts").val([result.inverter.vSetpoint, result.inverter.vBatt]);
+		    }
+			if((LastRealTimeData == null) || (LastRealTimeData.inverter.iBatt != result.inverter.iBatt) || (LastRealTimeData.inverter.vBatt != result.inverter.vBatt)) {
+				battPower = (result.inverter.iBatt * result.inverter.vBatt) / 1000
+				if(battPower > 0) {
+					battPowerText = battPower.toFixed(3) + " kW Discharging";
+					battPowerColour = 'red';
+				} else {
+					battPowerText = (0 - battPower).toFixed(3) + " kW Charging";
+					battPowerColour = 'green';
+				}
+//				$("#InverterVolts").jqxBarGauge({title:{subtitle:{text:battPowerText,font:{color:battPowerColour}}}});
+			}
+			
+			if((LastRealTimeData == null)
+			    	|| (LastRealTimeData.inverter.vBattDeltaMin != result.inverter.vBattDeltaMin)
+			    	|| (LastRealTimeData.inverter.vBattDeltaMax != result.inverter.vBattDeltaMax)
+					|| (LastRealTimeData.inverter.vSetpoint != result.inverter.vSetpoint)
+					|| (LastRealTimeData.inverter.vBatt != result.inverter.vBatt)) {
+				document.getElementById("vBattDeltaMin").innerText = result.inverter.vBattDeltaMin + "V";
+				document.getElementById("vBattDelta").innerText = (result.inverter.vSetpoint - result.inverter.vBatt).toFixed(2) + "V";
+				document.getElementById("vBattDeltaMax").innerText = result.inverter.vBattDeltaMax + "V";
+			}
+
+			if((LastRealTimeData == null) || (LastRealTimeData.inverter.soc != result.inverter.soc)) {
+				$("#InverterSoc").val(result.inverter.soc);
+				document.getElementById("soc").innerText = "SOC = " + result.inverter.soc.toString() + "%";
+		    }
+			// if((LastRealTimeData == null) || (LastRealTimeData.heater.setting != result.heater.setting)) {
+			// 	$("#AuxHeater").val(result.heater.setting);
+		    // }
+			if(result.tesla.cars.length > 0){
+				document.getElementById('Tesla').style.backgroundColor = "";
+				if((LastRealTimeData == null) || (LastRealTimeData.tesla.cars[0].maxAmps != result.tesla.cars[0].maxAmps) || (LastRealTimeData.tesla.cars[0].Current != result.tesla.cars[0].Current)) {
+					$("#Tesla").val([result.tesla.cars[0].maxAmps, result.tesla.cars[0].Current])
+				}
+				if(result.tesla.cars[0].status == 'Charging') {
+					result.tesla.cars[0].status = 'Charging ' + (result.tesla.cars[0].Current * 0.24).toFixed(3) + "kW";
+					teslaStatusColour = 'green'
+				} else {
+					teslaStatusColour = 'black'
+				}
+				if((LastRealTimeData == null) || (LastRealTimeData.tesla.cars[0].status != result.tesla.cars[0].status)) {
+                    $("#Tesla").jqxBarGauge("title", {subtitle: result.tesla.cars[0].status});
+//					$("#Tesla").jqxBarGauge({title:{subtitle:{text:result.tesla.cars[0].status,font:{color:teslaStatusColour}}}});
+				}
+			} else {
+				$("#Tesla").val([0, 0])
+				$("#Tesla").jqxBarGauge({title:{subtitle:{text:"No Data!",font:{color:"white"}}}});
+				document.getElementById('Tesla').style.backgroundColor = "red";
+			}
+
+            if(result.inverter.autoGn == "true") {
+                document.getElementById('GeneratorStatus').style.color = "white";
+                document.getElementById('GeneratorStatus').style.backgroundColor = "darkred";
+                document.getElementById('GeneratorStatus').innerText = "Generator Running";
+            } else {
+                document.getElementById('GeneratorStatus').style.color = "green";
+                document.getElementById('GeneratorStatus').style.backgroundColor = "white";
+                document.getElementById('GeneratorStatus').innerText = "Generator Stopped";
+            }
+			if((LastRealTimeData == null) || (LastRealTimeData.inverter.frequency != result.inverter.frequency)) {
+				$("#InverterFrequency").val(result.inverter.frequency);
+			}
+		};
+				
+		function setData(result) {
+			var systime = Date.parse(result.temps.logged.replace(/-/g, "/"));
+
+		    setStatusOnOff(result.pins.port2, "acStatus");
+		    setStatusOnOff(result.pins.port4, "heaterStatus");
+		    setStatusOnOff(result.pins.port0, "fanStatus");
+
+			if(LastData == null || LastData.pumps.PSOP != result.pumps.PSOP) {
+				sCaption = "Solar " + result.pumps.PSOP + "%";
+				$("#SolarPump").jqxGauge({caption:{value:sCaption, position: 'bottom', offset: [0, 10]}});
+				$("#SolarPump").val(result.pumps.PSOP);
+			}
+		    if(LastData == null || LastData.temps.AmbientOutside != result.temps.AmbientOutside) {
+				$("#AmbientOutside").val(result.temps.AmbientOutside / 10);
+				document.getElementById("AmbientOutside_val").innerHTML = (result.temps.AmbientOutside / 10).toFixed(1) + '&#8451;<br />' + (((result.temps.AmbientOutside / 50) * 9) + 32).toFixed(1) + '&#8457;';
+		    }
+		    if(LastData == null || LastData.temps.Bedroom != result.temps.Bedroom) {
+				$("#Bedroom").val(result.temps.Bedroom / 10);
+				document.getElementById("Bedroom_val").innerHTML = (result.temps.Bedroom / 10).toFixed(1) + '&#8451;<br />' + (((result.temps.Bedroom / 50) * 9) + 32).toFixed(1) + '&#8457;';
+		    }
+		    if((LastData == null) || (LastData.temps.CondenserIn != result.temps.CondenserIn) || (LastData.temps.CondenserOut != result.temps.CondenserOut)) {
+				$("#CondenserLoop").val([result.temps.CondenserIn / 10, result.temps.CondenserOut / 10]);
+		    }
+		    if((LastData == null) || (LastData.temps.GeneratorIn != result.temps.GeneratorIn) || (LastData.temps.GeneratorOut != result.temps.GeneratorOut)) {
+				$("#GeneratorLoop").val([result.temps.GeneratorIn / 10, result.temps.GeneratorOut / 10]);
+		    }
+		    if((LastData == null) || (LastData.temps.EvaporatorIn != result.temps.EvaporatorIn) || (LastData.temps.EvaporatorOut != result.temps.EvaporatorOut)) {
+				$("#EvaporatorLoop").val([result.temps.EvaporatorIn / 10, result.temps.EvaporatorOut / 10]);
+		    }
+		    if((LastData == null) || (LastData.temps.HotTankBottom != result.temps.HotTankBottom) || (LastData.temps.HotTankMiddle != result.temps.HotTankMiddle) || (LastData.temps.HotTankTop != result.temps.HotTankTop)) {
+		 	 	$("#HotTank").val([result.temps.HotTankBottom / 10, result.temps.HotTankMiddle / 10, result.temps.HotTankTop / 10]);
+		    }
+		    if((LastData == null) || (LastData.temps.BufferTankBottom != result.temps.BufferTankBottom) || (LastData.temps.BufferTankMiddle != result.temps.BufferTankMiddle) || (LastData.temps.BufferTankTop != result.temps.BufferTankTop)) {
+				$("#BufferTank").val([result.temps.BufferTankBottom / 10, result.temps.BufferTankMiddle / 10, result.temps.BufferTankTop / 10]);
+		    }
+		    if((LastData == null) || (LastData.temps.SolarCollector != result.temps.SolarCollector) || (LastData.temps.SolarInlet != result.temps.SolarInlet)
+							 || (LastData.temps.SolarOutlet != result.temps.SolarOutlet) || (LastData.temps.SolarExchanger != result.temps.SolarExchanger)) {
+			 	$("#SolarTemps").val([result.temps.SolarCollector / 10, result.temps.SolarInlet / 10, result.temps.SolarOutlet / 10, result.temps.SolarExchanger / 10]);
+		    }
+		    $('#Solar').val([result.solar.J, result.solar.K, result.solar.A, result.solar.B, result.solar.C, result.solar.D, result.solar.E, result.solar.F, result.solar.G, result.solar.H, result.solar.I]);
+			solarTotal = ((parseFloat(result.solar.A)
+							+ parseFloat(result.solar.B) 
+							+ parseFloat(result.solar.C) 
+							+ parseFloat(result.solar.D) 
+							+ parseFloat(result.solar.E) 
+							+ parseFloat(result.solar.F) 
+							+ parseFloat(result.solar.G) 
+							+ parseFloat(result.solar.H)
+							+ parseFloat(result.solar.I)
+							+ parseFloat(result.solar.J)
+							+ parseFloat(result.solar.K)) / 1000).toFixed(3);
+			sTitle = 'Solar Power '+ solarTotal + ' kW';
+			$('#Solar').jqxBarGauge({title:{ text: sTitle}});
+		};
+
+        function setUpGauges(){
+            let controlsHeight = $("#temperatures").height();
+            let controlsWidth = window.innerWidth  / 5;
+            let gaugeRadius = controlsWidth / 2;
+            if (controlsWidth > controlsHeight) {
+                gaugeRadius = controlsHeight / 2;
+            }
+            let gaugeDiameter = gaugeRadius * 2;
+//            let height = $('#SolarPump').height();
+//            let width = $('#SolarTemps').width();
+            solarHeight = gaugeDiameter - $("#Heater").height();
+            solarWidth = gaugeDiameter;
+            if (solarWidth > solarHeight) {
+                solarWidth = solarHeight;
+            } else {
+                solarHeight = solarWidth;
+            }
+            solarPadding = (gaugeDiameter - solarWidth) / 2;
+            $("#SolarPumpContainer").css({paddingLeft: solarPadding});
+            $('#SolarPump').jqxGauge({
+                width: solarWidth,
+                height: solarHeight,
+                ranges: [{startValue: 0, endValue: 100, style: {fill: 'GREEN', stroke: 'GREEN'}, startWidth: 5, endWidth: 5}],
+                ticksMinor: {interval: 5, size: '5%'},
+                ticksMajor: {interval: 20,size: '9%'},
+                max: 100,
+                min: 0,
+                value: 0,
+                radius: '50%',
+                animationDuration: 500,
+                cap: {size: '5%', style: { fill: '#ff0000', stroke: '#00ff00' }, visible: true},
+                caption: {value: 'Solar', position: 'bottom', offset: [0, 10], visible: true}
+            });
+            $('#SolarTemps').jqxBarGauge({
+                width: controlsWidth,
+                height: controlsHeight,
+                values: [0.0, 0.0, 0.0, 0.0],
+                min: 15,
+                max: 115,
+                animationDuration: 500,
+                startAngle: 265,
+                endAngle: 275,
+                title:	{
+                    text: 'Solar Temperatures',
+                    font: { size: 12, color: 'black', weight: 'bold', family:"Segoi-UI"},
+                    margin: { top: 0, bottom: 2, left: 0, right: 0},
+                    verticalAlignment: 'bottom'
+                },
+                labels: {
+                    font: {size: 8,},
+                    precision: 1,
+                },
+                colorScheme: 'customColors',
+                customColorScheme: { name: 'customColors', colors: ['#000066', '#006600', '#660000', '#006666'] },
+                tooltip: {visible: true,
+                precision: 1,
+                formatFunction: function (value, index){
+                    switch(index)
+                    {
+                        case 0 : return("Collector = " + value + '&#8451;');
+                            break;
+                        case 1 : return ("Input = " + value + '&#8451;');
+                            break;
+                        case 2 : return ("Output = " + value + '&#8451;');
+                            break;
+                        default : return ("Exchanger = " + value + '&#8451;');
+                    };
+                }}
+            });
+            $('#Solar').jqxBarGauge({
+                width: controlsWidth,
+                height: controlsHeight - $("#GeneratorStatus").height(),
+                values: [100, 200, 300, 400, 500, 600, 700, 800, 900, 1000, 1100],
+                min: 0,
+                max: 3000,
+                startAngle: 265,
+                endAngle: 275,
+                animationDuration: 500,
+                title:	{
+                    text: 'Solar Watts',
+                    font: { size: 12, color: 'black', weight: 'bold', family:"Segoi-UI"},
+                    margin: { top: 2, bottom: 2, left: 2, right: 2},
+                    verticalAlignment: 'bottom'
+                },
+                labels: {
+                    font: {size: 8,},
+                    precision: 1,
+                },
+                colorScheme: 'customColors',
+                customColorScheme: { name: 'customColors', colors: ['#80E080', '#000000', '#D02020', '#2020D0', '#20D020', '#D0D020', '#20D0D0', '#D020D0', '#A040A0', '#40A0A0', '#A0A040'] },
+                tooltip: {visible: true,
+                    precision: 1,
+                    formatFunction: function (value, index){
+                        switch(index)
+                        {
+                            case 0 : return("Inverter 1-A = " + value + 'W');
+                                break;
+                            case 1 : return("Inverter 1-B = " + value + 'W');
+                                break;
+                            case 2 : return("Inverter 2-A = " + value + 'W');
+                                break;
+                            case 3 : return("Inverter 2-B = " + value + 'W');
+                                break;
+                            case 4 : return("Inverter 2-C = " + value + 'W');
+                                break;
+                            case 5 : return("Inverter 3-A = " + value + 'W');
+                                break;
+                            case 6 : return("Inverter 3-B = " + value + 'W');
+                                break;
+                            case 7 : return("Inverter 3-C = " + value + 'W');
+                                break;
+                            case 8 : return("Inverter 4-A = " + value + 'W');
+                                break;
+                            case 9 : return("Inverter 4-B = " + value + 'W');
+                                break;
+                            default : return ("Inverter 4-C = " + value + 'W');
+                        };
+                    }}
+            });
+            $('#AmbientOutside').jqxLinearGauge({
+                width: controlsWidth / 2,
+                height: controlsHeight - ($("#AmbientOutside_header").height() + 10),
+                background: {
+                    borderRadius: 3,
+                },
+                orientation: 'vertical',
+                ticksMinor: {interval: 5, size: '5%'},
+                ticksMajor: {interval: 10,size: '10%'},
+                ticksOffset: ['10%', '4%'],
+                ticksPosition: 'far',
+                pointer: {size: '25%', style:{fill: 'red'}, offset:'-30%'},
+                scaleLength: '92%',
+                max: 45,
+                min: -5,
+                labels: {interval: 10, offset: "5%", position: 'far', formatValue: function(value, position){return value;}},
+                value: 0,
+                animationDuration: 0,
+            });
+            $('#Bedroom').jqxLinearGauge({
+                width: controlsWidth / 2,
+                height: controlsHeight - ($("#Bedroom_header").height() + 10),
+                background: {
+                    borderRadius: 3,
+                },
+                orientation: 'vertical',
+                ticksMinor: {interval: 5, size: '5%'},
+                ticksMajor: {interval: 10,size: '10%'},
+                ticksOffset: ['10%', '4%'],
+                ticksPosition: 'far',
+                pointer: {size: '25%', style:{fill: 'red'}, offset:'-30%'},
+                scaleLength: '92%',
+                max: 45,
+                min: -5,
+                labels: {interval: 10, offset: "5%", position: 'far', formatValue: function(value, position){return value;}},
+                value: 0,
+                animationDuration: 0,
+            });
+            $('#HotTank').jqxBarGauge({
+                width: controlsWidth,
+                height: controlsHeight,
+                values: [0.0, 0.0, 0.0],
+                min: 50,
+                max: 100,
+                animationDuration: 0,
+                startAngle: 265,
+                endAngle: 275,
+                title:	{
+                    text: 'Hot Tank',
+                    font: { size: 12, color: 'black', weight: 'bold', family:"Segoi-UI"},
+                    margin: { top: 0, bottom: 2, left: 0, right: 0},
+                    verticalAlignment: 'bottom'
+                },
+                labels: {
+                    font: {size: 8,},
+                    precision: 1,
+                },
+                colorScheme: 'customColors',
+                customColorScheme: { name: 'customColors', colors: ['#660000', '#990000', '#ff0000'] },
+                tooltip: {visible: true,
+                    precision: 1,
+                    formatFunction: function (value, index){
+                        switch(index)
+                        {
+                            case 2 : return("Top = " + value + '&#8451;');
+                                break;
+                            case 1 : return ("Middle = " + value + '&#8451;');
+                                break;
+                            default : return ("Bottom = " + value + '&#8451;');
+                        };
+                    }}
+            });
+            $('#BufferTank').jqxBarGauge({
+                width: controlsWidth,
+                height: controlsHeight,
+                values: [0.0, 0.0, 0.0],
+                min: 5,
+                max: 60,
+                animationDuration: 0,
+                startAngle: 265,
+                endAngle: 275,
+                title:	{
+                    text: 'Buffer Tank',
+                    font: { size: 12, color: 'black', weight: 'bold', family:"Segoi-UI"},
+                    margin: { top: 0, bottom: 2, left: 0, right: 0},
+                    verticalAlignment: 'bottom'
+                },
+                labels: {
+                    font: {size: 8,},
+                    precision: 1,
+                },
+                colorScheme: 'customColors',
+                customColorScheme: { name: 'customColors', colors: ['#000066', '#000099', '#0000ff'] },
+                tooltip: {visible: true,
+                    precision: 1,
+                    formatFunction: function (value, index){
+                        switch(index)
+                        {
+                            case 2 : return("Top = " + value + '&#8451;');
+                                break;
+                            case 1 : return ("Middle = " + value + '&#8451;');
+                                break;
+                            default : return ("Bottom = " + value + '&#8451;');
+                        };
+                    }}
+            });
+            $('#GeneratorLoop').jqxBarGauge({
+            width: controlsWidth,
+            height: controlsHeight,
+            values: [0.0, 0.0],
+            min: 40,
+            max: 100,
+            animationDuration: 500,
+            startAngle: 265,
+            endAngle: 275,
+            title:	{
+                        text: 'Generator Circuit',
+                        font: { size: 12, color: 'black', weight: 'bold', family:"Segoi-UI"},
+                        margin: { top: 0, bottom: 0, left: 0, right: 0},
+                        verticalAlignment: 'bottom'
+                    },
+            labels: {
+                        font: {size: 8,},
+                        precision: 1,
+                    },
+            colorScheme: 'customColors',
+            customColorScheme: { name: 'customColors', colors: ['red', 'blue'] },
+            tooltip: {visible: true,
+                      precision: 1,
+                      formatFunction: function (value, index){
+                                            if(index == 0)
+                                                return("In = " + value + '&#8451;');
+                                            else
+                                                return ("Out = " + value + '&#8451;');
+                                        }}
+            });
+            $('#EvaporatorLoop').jqxBarGauge({
+                width: controlsWidth,
+                height: controlsHeight,
+                values: [0.0, 0.0],
+                min: 5,
+                max: 30,
+                animationDuration: 500,
+                startAngle: 265,
+                endAngle: 275,
+                title:	{
+                            text: 'Evaporator Circuit',
+                            font: { size: 12, color: 'black', weight: 'bold', family:"Segoi-UI"},
+                            margin: { top: 0, bottom: 2, left: 0, right: 0},
+                            verticalAlignment: 'bottom'
+                        },
+                labels: {
+                            font: {size: 8,},
+                            precision: 1,
+                        },
+                colorScheme: 'customColors',
+                customColorScheme: { name: 'customColors', colors: ['red', 'blue'] },
+                tooltip: {
+                    visible: true,
+                    precision: 1,
+                    formatFunction: function (value, index){
+                        if(index == 0)
+                            return("In = " + value + '&#8451;');
+                        else
+                            return ("Out = " + value + '&#8451;');
+                        }
+                }
+            });
+            $('#CondenserLoop').jqxBarGauge({
+                width: controlsWidth,
+                height: controlsHeight,
+                values: [0.0, 0.0],
+                min: 15,
+                max: 45,
+                animationDuration: 500,
+                startAngle: 265,
+                endAngle: 275,
+                title:	{
+                    text: 'Condenser Circuit',
+                    font: { size: 12, color: 'black', weight: 'bold', family:"Segoi-UI"},
+                    margin: { top: 0, bottom: 2, left: 0, right: 0},
+                    verticalAlignment: 'bottom'
+                },
+                labels: {
+                    font: {size: 8,},
+                    precision: 1,
+                },
+                colorScheme: 'customColors',
+                customColorScheme: { name: 'customColors', colors: ['blue', 'red'] },
+                tooltip: {
+                    visible: true,
+                    precision: 1,
+                    formatFunction: function (value, index){
+                        if(index == 0)
+                            return("In = " + value + '&#8451;');
+                        else
+                            return ("Out = " + value + '&#8451;');
+                    }
+                }
+            });
+
+//            let h = $("#inverterValues").height();
+//            let w = $("#Tesla").width();
+//            if (h > w) {
+//             v = w;
+//            } else {
+//             v = h;
+//            }
+            $('#Tesla').jqxBarGauge({
+            width: controlsWidth,
+            height: controlsHeight,
+            values: [48.0, 48.0],
+            min: 0,
+            max: 48,
+            animationDuration: 500,
+            startAngle: 265,
+            endAngle: 275,
+            title:	{
+                        text: 'Tesla Charging Current',
+                        font: { size: 12, color: 'black', weight: 'bold', family:"Segoi-UI"},
+                        margin: { top: 0, bottom: 2, left: 0, right: 0},
+                        verticalAlignment: 'bottom',
+                        subtitle: {text:'Status', font:{size: 10, color:'black', weight:'bold'}}
+                    },
+            labels: {
+                        font: {size: 8,},
+                        precision: 1,
+                    },
+            colorScheme: 'customColors',
+            customColorScheme: { name: 'customColors', colors: ['#000066', '#006600'] },
+            tooltip: {visible: true,
+                      precision: 1,
+                      formatFunction: function (value, index){
+                                            switch(index)
+                                            {
+                                                case 0 : return("Available = " + value + 'A');
+                                                    break;
+                                                default : return ("Charging = " + value + 'A');
+                                            };
+                                        }}
+            });
+
+            $('#AuxHeater').jqxLinearGauge({
+                width: controlsWidth,
+                height: controlsHeight,
+                background: {
+                    borderRadius: 5,
+                },
+                orientation: 'vertical',
+                ticksMajor: {interval: 1,size: '25%'},
+                ticksMinor: {interval: 0, size: '0%'},
+                ticksOffset: ['25%', '14%'],
+                ticksPosition: 'both',
+                pointer: {size: '90%', style:{fill: 'red'}, offset: '-45%'},
+                scaleLength: '80%',
+                max: 7,
+                min: 0,
+                labels: {visible: false},
+                value: 0,
+                animationDuration: 0,
+            });
+            $('#InverterVolts').jqxBarGauge({
+                width: controlsWidth,
+                height: controlsHeight,
+                values: [50.0, 52.0],
+                min: 40,
+                max: 70,
+                animationDuration: 500,
+                startAngle: 265,
+                endAngle: 275,
+                title:	{
+                    text: 'Battery Volts',
+                    font: { size: 10, color: 'black', weight: 'bold', family:"Segoi-UI"},
+                    margin: { top: 0, bottom: 2, left: 0, right: 0},
+                    verticalAlignment: 'bottom',
+                    subtitle: {text:'Power', font:{size: 10, color:'green', weight:'bold'}}
+                },
+                labels: {
+                    font: {size: 8,},
+                    precision: 1,
+                },
+                colorScheme: 'customColors',
+                customColorScheme: { name: 'customColors', colors: ['#881010', '#E02020'] },
+                tooltip: {visible: true,
+                    precision: 1,
+                    formatFunction: function (value, index){
+                            switch(index)
+                            {
+                                case 0 : return("Setpoint = " + value + 'V');
+                                    break;
+                                default : return ("Battery = " + value + 'V');
+                            };
+                        }
+                }
+            });
+
+            $('#InverterCurrent').jqxGauge({
+                height: gaugeDiameter - 50,
+                width: gaugeDiameter - 50,
+                radius: gaugeRadius - 25,
+                ranges: [
+                    {startValue: -180, endValue: 0, style: {fill: 'RED', stroke: 'RED'}, startWidth: 9, endWidth: 5},
+                    {startValue: 0, endValue: 180, style: {fill: 'GREEN', stroke: 'GREEN'}, startWidth: 5, endWidth: 9}
+                ],
+                ticksMinor: {interval: 5, size: '5%'},
+                ticksMajor: {interval: 25,size: '9%'},
+                labels: {interval:50},
+                max: 250,
+                min: -250,
+                value: 0,
+                radius: '50%',
+                animationDuration: 500,
+                cap: {size: '5%', style: { fill: '#ff0000', stroke: '#00ff00' }, visible: true},
+                caption: {value: 'Battery Current', position: 'bottom', offset: [0, 10], visible: true},
+            });
+            $('#InverterSoc').jqxLinearGauge({
+                width: controlsWidth,
+                height: controlsHeight,
+                background: { borderRadius: 5 },
+                orientation: 'vertical',
+                ticksMinor: {interval: 5, size: '15%'},
+                ticksMajor: {interval: 10,size: '25%'},
+                ticksOffset: ['15%', '2%'],
+                ticksPosition: 'far',
+                pointer: {size: '40%', style:{fill: 'green'}, offset:'-30%'},
+                scaleLength: '90%',
+                max: 100,
+                min: 0,
+                labels: {interval: 20, offset: '-25%', position: 'far', formatValue: function(value, position){return value + "%";}},
+                value: 75,
+                animationDuration: 0,
+                ranges: [
+                    { startValue: 0, endValue: 35, style: { fill: '#FF4800', stroke: '#FF4800'}},
+                    { startValue: 35, endValue: 70, style: { fill: '#FFA200', stroke: '#FFA200'}},
+                    { startValue: 70, endValue: 100, style: {fill: '#00FF00', stroke: '#00FF00'}}
+                ],
+                rangesOffset: '-30%'
+            });
+            $('#InverterFrequency').jqxLinearGauge({
+                width: controlsWidth,
+                height: '50px',
+                background: {
+                    borderRadius: 5,
+                },
+                pointer: {
+                    pointerType: 'arrow',
+                    size: '50%',
+                    visible: true,
+                    offset: "0%",
+                },
+                orientation:"horizontal",
+                max: 63,
+                min: 56,
+                colorScheme: 'scheme02',
+                labels: {
+                    position: 'far',
+                    formatValue: function(val, pos){if ((val % 2) == 1) return ""; else return val + "Hz";},
+                    interval: 1,
+                },
+                ticksMajor: {size: '10%', interval: 1},
+                ticksMinor: {size: '5%', interval: 0.5, style: {'stroke-width': 1, stroke: '#aaaaaa'}},
+                ranges: [
+                    {startValue: 56, endValue: 59, style: {fill: '#FFA200', stroke: '#FFA200'}},
+                    {startValue: 59, endValue: 61, style: {fill: '#00FF00', stroke: '#00FF00'}},
+                    {startValue: 61, endValue: 63, style: {fill: '#FF4800', stroke: '#FF4800'}}
+                ],
+            });
+	};
+	function reloadPage() {
+	  	var id = Math.max(
+    		window.setInterval(noop, 1000),
+    		window.setTimeout(noop, 1000));
+		while (id--) {
+    		window.clearTimeout(id);
+			window.clearInterval(id);
+  		}
+		window.location.reload(true)
+
+		function noop(){}
+	};
+
+	function switchElectrolyser() {
+		breaker = $("#electrolyserSwitch")
+		if (breaker.attr("src") == "images/breaker_off.png") {
+			breaker.attr("src", "images/breaker_on.png");
+			fetch('http://' + window.location.hostname + ':8080/enableElectrolyser')
+			.then( function(response) {
+					if (response.status == 200) {
+						response.json()
+							.then(function(Data) {
+								setRealTimeData(Data);
+								LastRealTimeData = Data;
+							});
+					}
+				})
+				.catch(function(err) {
+					console.log('Fetch Error :-S' + err);
+				});		
+		} else {
+			breaker.attr("src", "images/breaker_off.png")
+			fetch('http://' + window.location.hostname + ':8080/disableElectrolyser')
+			.then( function(response) {
+					if (response.status == 200) {
+						response.json()
+							.then(function(Data) {
+								setRealTimeData(Data);
+								LastRealTimeData = Data;
+							});
+					}
+				})
+				.catch(function(err) {
+					console.log('Fetch Error :-S' + err);
+				});		
+		}
+	}
+
+	function switchHeater(enable) {
+		breaker = $("#heaterSwitch");
+		if (breaker.attr("src") == "images/breaker_off.png") {
+			breaker.attr("src","images/breaker_on.png");
+			fetch('http://' + window.location.hostname + ':8080/enableHeater')
+				.then( function(response) {
+					if (response.status == 200) {
+						response.json()
+							.then(function(Data) {
+								setRealTimeData(Data);
+								LastRealTimeData = Data;
+							});
+					}
+				})
+				.catch(function(err) {
+					console.log('Fetch Error :-S' + err);
+				});		
+		} else {
+			breaker.attr("src","images/breaker_off.png")
+			fetch('http://' + window.location.hostname + ':8080/disableHeater')
+				.then( function(response) {
+					if (response.status == 200) {
+						response.json()
+							.then(function(Data) {
+								setRealTimeData(Data);
+								LastRealTimeData = Data;
+							});
+					}
+				})
+				.catch(function(err) {
+					console.log('Fetch Error :-S' + err);
+				});
+		}
+	}
+
+	function openHeatPump() {
+		window.open("http://" + window.location.hostname + ":8085");
+	}
+
+    $(window).resize(function() {
+        if(this.resizeTO) clearTimeout(this.resizeTO);
+        this.resizeTO = setTimeout(function() {
+            $(this).trigger('windowResize');
+        }, 500);
+    });
+    $(window).on('windowResize', function() {
+        window.location.reload();
+    });
+
+	</script>
+    <style>
+        div.centered {
+            text-align: center;
+            margin:auto;
+            margin-top: 0px;
+            margin-bottom: 0px;
+        }
+    	div.tempGauge{
+            text-align: center;
+    		float:left;
+    		width:50px;
+    		height:100%;
+    		margin-left:0;
+    		margin-right:0;
+            font-size:6pt;
+            border:1pt;
+    	}
+    	div.tempGaugeGauge{
+    		top:0;
+    		width:100%;
+    		height:60%;
+    		margin-left:0;
+    		margin-right:0;
+    	}
+    	div.jqxTempGauge{
+    		margin-left:1%;
+    		margin-right:1%;
+    	}
+    	span.tempGaugeValue{
+    		text-align:center;
+    	}
+    	.jqx-gauge-label{
+    		font-size:xx-small;
+    	}
+    	.BUTTON_JKX {
+		   background: #2FC8F6;
+		   background-image: -webkit-linear-gradient(top, #2FC8F6, #4036D0);
+		   background-image: -moz-linear-gradient(top, #2FC8F6, #4036D0);
+		   background-image: -ms-linear-gradient(top, #2FC8F6, #4036D0);
+		   background-image: -o-linear-gradient(top, #2FC8F6, #4036D0);
+		   background-image: linear-gradient(to bottom, #2FC8F6, #4036D0);
+		   -webkit-border-radius: 20px;
+		   -moz-border-radius: 20px;
+		   border-radius: 20px;
+		   height: 19px;
+		   line-height: 19px;
+		   color: #FFFFFF;
+		   font-family: Open Sans;
+		   width: 147px;
+		   font-size: 18px;
+		   font-weight: 100;
+		   padding: 6px;
+		   box-shadow: 1px 1px 20px 0px #000000;
+		   -webkit-box-shadow: 1px 1px 20px 0px #000000;
+		   -moz-box-shadow: 1px 1px 20px 0px #000000;
+		   text-shadow: 1px 1px 20px #000000;
+		   border: solid #337FED 1px;
+		   text-decoration: none;
+		   display: inline-block;
+		   cursor: pointer;
+		}
+		.switch {
+			margin-left:10px;
+			height:4vw;
+		}
+		.rotateimg180 {
+			-webkit-transform:rotate(0deg);
+			-moz-transform: rotate(0deg);
+			-ms-transform: rotate(0deg);
+			-o-transform: rotate(0deg);
+			transform: rotate(0deg);
+		}
+    </style>
+  </head>
+  <body>
+    <div style="height:100%;width:100%; display: grid; grid-template-rows: 33% 33% 33%">
+      <div id='temperatures' style="top:0;left:0;margin:0; display: grid; grid-template-columns: 20vw 20vw 20vw 10vw 10vw 20vw; grid-template-rows: auto">
+        <div class="centered" style="display: grid; grid-template-rows: auto 3em">
+            <div id="SolarPumpContainer">
+                <div id='SolarPump' style='margin-left:0px;margin-right:0px;margin-top:1%;margin-bottom:0' onclick="window.open('trackers/solarPump.html')"></div>
+            </div>
+            <div id='Heater' style='margin-left:5%;margin-right:5%;margin-top:1%;margin-bottom:0;height:2em'>
+              <p style="text-align:center; margin-top:0; margin-bottom:0; font-size:x-small">Cabinet Fans <span id=fanStatus>?</span></p>
+              <p style="text-align:center; margin-top:0; margin-bottom:0; font-size:x-small"><a href="ac_control.php">AC <span id=acStatus>?</span></a></p>
+            </div>
+        </div>
+        <div class="centered" onclick="window.open('trackers/solar_temps.html')">
+          <div id='SolarTemps'></div>
+        </div>
+        <div class="centered" onclick="window.open('trackers/solar.html')">
+          <div style="width:100%; height:90%;margin-left:auto;margin-right:auto;font-size:x-small">
+              <div id='Solar'>Solar Output</div>
+          </div>
+          <div id='GeneratorStatus' style='width:100%; height:1em; text-align:center; font-size:x-small'>Generator Status</div>
+        </div>
+        <div class="tempGauge" id="AmbientOutside_Gauge">
+          <p id='AmbientOutside_header' style='text-align:center; width:100%; margin: 0px;'>Outside<br />
+            <span id='AmbientOutside_val' class="tempGaugeValue">---&#8451;<br />---&#8457;</span>
+          </p>
+          <div class="tempGaugeGauge">
+            <div id='AmbientOutside'></div>
+          </div>
+        </div>
+        <div class="tempGauge" id="Bedroom_Gauge">
+          <p id="Bedroom_header" style='text-align:center; width:100%; margin:0px'>Bedroom<br />
+            <span id='Bedroom_val' class="tempGaugeValue">---&#8451;<br />---&#8457;</span>
+          </p>
+          <div class="tempGaugeGauge">
+            <div id='Bedroom'></div>
+          </div>
+        </div>
+        <div class="centered">
+            <div>
+                <button class="BUTTON_JKX" type="button" onClick="reloadPage();">Reload this page</button><br />
+                <a href="/logging">Logging</a>
+            </div>
+        </div>
+      </div>
+      <div style="display: grid; grid-template-columns: 20% 20% 20% 20% 20%; border-top-color: black;border-top-width: 1px; border-top-style: solid;border-bottom-color: black;border-bottom-width: 1px; border-bottom-style: solid;">
+          <div class="centered" onclick="window.open('trackers/hot_tank.html')">
+              <div id='HotTank'></div>
+          </div>
+          <div class="centered"  onclick="window.open('trackers/buffer_tank.html')">
+              <div id='BufferTank'></div>
+          </div>
+        <div class="centered"  onclick="window.open('trackers/loop_temps.html')">
+      	  <div id='EvaporatorLoop'></div>
+        </div>
+        <div class="centered"  onclick="window.open('trackers/loop_temps.html')">
+          <div id='CondenserLoop'></div>
+        </div>
+        <div class="centered" onclick="window.open('trackers/loop_temps.html')">
+          <div id='GeneratorLoop'></div>
+        </div>
+      </div>
+      <div id='inverterValues' style="display: grid; grid-template-columns: 20% 20% 20% 20% 20%">
+        <div class="centered">
+            <div id="Tesla" onClick="window.open('trackers/Tesla.html')">Tesla</div>
+            <div style="text-align: center;"><a href="http://aberhome1.local:8080/getTeslaKeys">Set Tesla Tokens</a></div>
+            <div style="text-align: center;"><a href="http://aberhome1.local:8080/startCharging" target="_blank">Start</a>&nbsp;&lt;--Charging--&gt;&nbsp;<a href="http://aberhome1.local:8080/stopCharging" target="_blank">Stop</a></div>
+        </div>
+        <div class="centered">
+            <div id='AuxHeater' >Heater</div>
+            <div style='height:1.5em; font-size:x-small; font-weight: bold; text-align: center'>
+                <p>Aux Heat&nbsp;<span id=heaterStatus>?</span></p>
+            </div>
+        </div>
+		<div class="centered">
+			<div onclick="window.open('trackers/water_heater.html')" id='InverterVolts'>Battery Volts</div>
+			<div style="height:3em; text-align:center">
+				<a href="ChargeParams" style="font-size:x-small">Charge Parameters</a><br />
+				<span id="vBattDeltaMin" style="color:green;font-size:x-small">0</span> : <span id="vBattDelta" style="color:blue;font-size:x-small">0</span> : <span id="vBattDeltaMax" style="color:red;font-size:x-small">0</span>
+			</div>
+		</div>
+		<div class="centered">
+            <div class="centered" style="padding-left: 3em">
+    			<div id='InverterCurrent' onclick="window.open('trackers/charging.html')" >Inverter Current</div>
+            </div>
+			<div style="height:1.5em">
+				<div id='InverterFrequency' style='margin-left:auto;margin-right:auto;text-align:center'>Frequency (50Hz)</div>
+			</div>
+        </div>
+		<div class="centered" onclick="window.open('trackers/charging.html')">
+			<div id='InverterSoc' style='margin-left:auto;margin-right:auto;'>Inverter SOC</div>
+			<div style="height:1.5em; text-align:center">
+				<span id='soc' style='font-size:x-small; font-weight:bold'>SOC</span>
+			</div>
+        </div>
+      </div>
+    </div>
+  </body>
+  <script type="text/javascript">
+		setUpGauges();
+		getData();
+		getRealTimeData();
+		setTimeout(reloadPage, 900000);	// Reload the page every 15 minutes
+  </script>
+</html>

@@ -18,6 +18,7 @@ type ESPTemperature struct {
 	LastUpdate   time.Time
 	LastError    error
 	Updated      bool
+	WaitRestart  time.Time
 	mu           sync.Mutex
 }
 
@@ -30,12 +31,19 @@ type newValues struct {
 func NewESPTemperature(url string) *ESPTemperature {
 	esp := new(ESPTemperature)
 	esp.url = url
+	esp.WaitRestart = time.Now()
 	return esp
 }
 
 func (esp *ESPTemperature) readTemperatures() {
 	var values newValues
-	if resp, err := http.Get(esp.url + "/ajax/climate"); err != nil {
+	//if esp.WaitRestart.After(time.Now()) {
+	//	// We are waiting for the temperature module to restart becuase the temperatures appeared messed up so don't poll yet.
+	//	log.Println("Waiting for restart", esp.url)
+	//	return
+	//}
+	client := http.Client{Timeout: time.Second * 2}
+	if resp, err := client.Get(esp.url + "/ajax/climate"); err != nil {
 		esp.LastError = err
 		log.Println(err)
 		return
@@ -78,6 +86,8 @@ func (esp *ESPTemperature) readTemperatures() {
 						esp.url, values.Ambient, values.Humidity,
 						values.Temperatures[0], values.Temperatures[1], values.Temperatures[2],
 						values.Temperatures[3], values.Temperatures[4], values.Temperatures[5])
+					//// Hold off for 2 minutes. The ESP should restart due to lack of polling and will hopefully fix the bad temperature issue.
+					//esp.WaitRestart = time.Now().Add(time.Minute * 2)
 				}
 			}
 		}

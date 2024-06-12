@@ -41,7 +41,7 @@ type TwcMessage struct {
 }
 
 // New /*
-//Set up a new message buffer
+// Set up a new message buffer
 func New(p serial.Port, verbose bool) TwcMessage {
 	// 17 byte buffer
 	m := TwcMessage{make([]byte, 20), 0, false, p, verbose, false, false}
@@ -49,7 +49,7 @@ func New(p serial.Port, verbose bool) TwcMessage {
 }
 
 // AddByte /*
-//Add a byte to the buffer
+// Add a byte to the buffer
 func (this *TwcMessage) AddByte(b byte) (bool, error) {
 	if b == 0xC0 {
 		if !this.inProgress {
@@ -112,7 +112,8 @@ func (this *TwcMessage) AddByte(b byte) (bool, error) {
 	return false, nil
 }
 
-/**
+/*
+*
 Calculate the chaecksum for the data in the current message buffer.
 */
 func (twcMessage *TwcMessage) calculateChecksum(bufferLength int) byte {
@@ -150,8 +151,8 @@ func (twcMessage *TwcMessage) Reset() {
 	}
 }
 
-func (twcMessage *TwcMessage) Print() {
-	fmt.Printf("Code %02x\nFrom %04x\nT0 %04x\n%s", twcMessage.GetCode(), twcMessage.GetFromAddress(), twcMessage.GetToAddress(), hex.Dump(twcMessage.bytes))
+func (twcMessage *TwcMessage) GetDetails() string {
+	return fmt.Sprintf("Code %02x\nFrom %04x\nT0 %04x\n%s", twcMessage.GetCode(), twcMessage.GetFromAddress(), twcMessage.GetToAddress(), hex.Dump(twcMessage.bytes))
 }
 
 // GetCode /*
@@ -283,95 +284,95 @@ func (twcMessage *TwcMessage) SendMasterLinkReady2(fromAddress uint16) {
 
 // SendMasterHeartbeat /*
 //
-//      # Meaning of data:
-//      #
-//      # Byte 1 is a command:
-//      #   00 Make no changes
-//      #   02 Error
-//      #     Byte 2 appears to act as a bitmap where each set bit causes the
-//      #     slave TWC to enter a different error state. First 8 digits below
-//      #     show which bits are set and these values were tested on a Protocol
-//      #     2 TWC:
-//      #       0000 0001 = Middle LED blinks 3 times red, top LED solid green.
-//      #                   Manual says this code means 'Incorrect rotary switch
-//      #                   setting.'
-//      #       0000 0010 = Middle LED blinks 5 times red, top LED solid green.
-//      #                   Manual says this code means 'More than three Wall
-//      #                   Connectors are set to Slave.'
-//      #       0000 0100 = Middle LED blinks 6 times red, top LED solid green.
-//      #                   Manual says this code means 'The networked Wall
-//      #                   Connectors have different maximum current
-//      #                   capabilities.'
-//      #   	0000 1000 = No effect
-//      #   	0001 0000 = No effect
-//      #   	0010 0000 = No effect
-//      #   	0100 0000 = No effect
-//  	  #     1000 0000 = No effect
-//      #     When two bits are set, the lowest bit (rightmost bit) seems to
-//      #     take precedence (ie 111 results in 3 blinks, 110 results in 5
-//      #     blinks).
-//      #
-//      #     If you send 02 to a slave TWC with an error code that triggers
-//      #     the middle LED to blink red, slave responds with 02 in its
-//      #     heartbeat, then stops sending heartbeat and refuses further
-//      #     communication. Slave's error state can be cleared by holding red
-//      #     reset button on its left side for about 4 seconds.
-//      #     If you send an error code with bitmap 11110xxx (where x is any bit),
-//      #     the error can not be cleared with a 4-second reset.  Instead, you
-//      #     must power cycle the TWC or 'reboot' reset which means holding
-//      #     reset for about 6 seconds till all the LEDs turn green.
-//      #   05 Tell slave charger to limit power to number of amps in bytes 2-3.
-//      #
-//      # Protocol 2 adds a few more command codes:
-//      #   06 Increase charge current by 2 amps.  Slave changes its heartbeat
-//      #      state to 06 in response. After 44 seconds, slave state changes to
-//      #      0A but amp value doesn't change.  This state seems to be used to
-//      #      safely creep up the amp value of a slave when the Master has extra
-//      #      power to distribute.  If a slave is attached to a car that doesn't
-//      #      want that many amps, Master will see the car isn't accepting the
-//      #      amps and stop offering more.  It's possible the 0A state change
-//      #      is not time based but rather indicates something like the car is
-//      #      now using as many amps as it's going to use.
-//      #   07 Lower charge current by 2 amps. Slave changes its heartbeat state
-//      #      to 07 in response. After 10 seconds, slave raises its amp setting
-//      #      back up by 2A and changes state to 0A.
-//      #      I could be wrong, but when a real car doesn't want the higher amp
-//      #      value, I think the TWC doesn't raise by 2A after 10 seconds. Real
-//      #      Master TWCs seem to send 07 state to all children periodically as
-//      #      if to check if they're willing to accept lower amp values. If
-//      #      they do, Master assigns those amps to a different slave using the
-//      #      06 state.
-//      #   08 Master acknowledges that slave stopped charging (I think), but
-//      #      the next two bytes contain an amp value the slave could be using.
-//      #   09 Tell slave charger to limit power to number of amps in bytes 2-3.
-//      #      This command replaces the 05 command in Protocol 1. However, 05
-//      #      continues to be used, but only to set an amp value to be used
-//      #      before a car starts charging. If 05 is sent after a car is
-//      #      already charging, it is ignored.
-//      #
-//      # Byte 2-3 is the max current a slave TWC can charge at in command codes
-//      # 05, 08, and 09. In command code 02, byte 2 is a bitmap. With other
-//      # command codes, bytes 2-3 are ignored.
-//      # If bytes 2-3 are an amp value of 0F A0, combine them as 0x0fa0 hex
-//      # which is 4000 in base 10. Move the decimal point two places left and
-//      # you get 40.00Amps max.
-//      #
-//      # Byte 4: 01 when a Master TWC is physically plugged in to a car.
-//      # Otherwise 00.
-//      #
-//      # Remaining bytes are always 00.
-//      #
-//      # Example 7-byte data that real masters have sent in Protocol 1:
-//      #   00 00 00 00 00 00 00  (Idle)
-//      #   02 04 00 00 00 00 00  (Error bitmap 04.  This happened when I
-//      #                         advertised a fake Master using an invalid max
-//      #                         amp value)
-//      #   05 0f a0 00 00 00 00  (Master telling slave to limit power to 0f a0
-//      #                         (40.00A))
-//      #   05 07 d0 01 00 00 00  (Master plugged in to a car and presumably
-//      #                          telling slaves to limit power to 07 d0
-//      #                          (20.00A). 01 byte indicates Master is plugged
-//      #                          in to a car.)
+//	    # Meaning of data:
+//	    #
+//	    # Byte 1 is a command:
+//	    #   00 Make no changes
+//	    #   02 Error
+//	    #     Byte 2 appears to act as a bitmap where each set bit causes the
+//	    #     slave TWC to enter a different error state. First 8 digits below
+//	    #     show which bits are set and these values were tested on a Protocol
+//	    #     2 TWC:
+//	    #       0000 0001 = Middle LED blinks 3 times red, top LED solid green.
+//	    #                   Manual says this code means 'Incorrect rotary switch
+//	    #                   setting.'
+//	    #       0000 0010 = Middle LED blinks 5 times red, top LED solid green.
+//	    #                   Manual says this code means 'More than three Wall
+//	    #                   Connectors are set to Slave.'
+//	    #       0000 0100 = Middle LED blinks 6 times red, top LED solid green.
+//	    #                   Manual says this code means 'The networked Wall
+//	    #                   Connectors have different maximum current
+//	    #                   capabilities.'
+//	    #   	0000 1000 = No effect
+//	    #   	0001 0000 = No effect
+//	    #   	0010 0000 = No effect
+//	    #   	0100 0000 = No effect
+//		  #     1000 0000 = No effect
+//	    #     When two bits are set, the lowest bit (rightmost bit) seems to
+//	    #     take precedence (ie 111 results in 3 blinks, 110 results in 5
+//	    #     blinks).
+//	    #
+//	    #     If you send 02 to a slave TWC with an error code that triggers
+//	    #     the middle LED to blink red, slave responds with 02 in its
+//	    #     heartbeat, then stops sending heartbeat and refuses further
+//	    #     communication. Slave's error state can be cleared by holding red
+//	    #     reset button on its left side for about 4 seconds.
+//	    #     If you send an error code with bitmap 11110xxx (where x is any bit),
+//	    #     the error can not be cleared with a 4-second reset.  Instead, you
+//	    #     must power cycle the TWC or 'reboot' reset which means holding
+//	    #     reset for about 6 seconds till all the LEDs turn green.
+//	    #   05 Tell slave charger to limit power to number of amps in bytes 2-3.
+//	    #
+//	    # Protocol 2 adds a few more command codes:
+//	    #   06 Increase charge current by 2 amps.  Slave changes its heartbeat
+//	    #      state to 06 in response. After 44 seconds, slave state changes to
+//	    #      0A but amp value doesn't change.  This state seems to be used to
+//	    #      safely creep up the amp value of a slave when the Master has extra
+//	    #      power to distribute.  If a slave is attached to a car that doesn't
+//	    #      want that many amps, Master will see the car isn't accepting the
+//	    #      amps and stop offering more.  It's possible the 0A state change
+//	    #      is not time based but rather indicates something like the car is
+//	    #      now using as many amps as it's going to use.
+//	    #   07 Lower charge current by 2 amps. Slave changes its heartbeat state
+//	    #      to 07 in response. After 10 seconds, slave raises its amp setting
+//	    #      back up by 2A and changes state to 0A.
+//	    #      I could be wrong, but when a real car doesn't want the higher amp
+//	    #      value, I think the TWC doesn't raise by 2A after 10 seconds. Real
+//	    #      Master TWCs seem to send 07 state to all children periodically as
+//	    #      if to check if they're willing to accept lower amp values. If
+//	    #      they do, Master assigns those amps to a different slave using the
+//	    #      06 state.
+//	    #   08 Master acknowledges that slave stopped charging (I think), but
+//	    #      the next two bytes contain an amp value the slave could be using.
+//	    #   09 Tell slave charger to limit power to number of amps in bytes 2-3.
+//	    #      This command replaces the 05 command in Protocol 1. However, 05
+//	    #      continues to be used, but only to set an amp value to be used
+//	    #      before a car starts charging. If 05 is sent after a car is
+//	    #      already charging, it is ignored.
+//	    #
+//	    # Byte 2-3 is the max current a slave TWC can charge at in command codes
+//	    # 05, 08, and 09. In command code 02, byte 2 is a bitmap. With other
+//	    # command codes, bytes 2-3 are ignored.
+//	    # If bytes 2-3 are an amp value of 0F A0, combine them as 0x0fa0 hex
+//	    # which is 4000 in base 10. Move the decimal point two places left and
+//	    # you get 40.00Amps max.
+//	    #
+//	    # Byte 4: 01 when a Master TWC is physically plugged in to a car.
+//	    # Otherwise 00.
+//	    #
+//	    # Remaining bytes are always 00.
+//	    #
+//	    # Example 7-byte data that real masters have sent in Protocol 1:
+//	    #   00 00 00 00 00 00 00  (Idle)
+//	    #   02 04 00 00 00 00 00  (Error bitmap 04.  This happened when I
+//	    #                         advertised a fake Master using an invalid max
+//	    #                         amp value)
+//	    #   05 0f a0 00 00 00 00  (Master telling slave to limit power to 0f a0
+//	    #                         (40.00A))
+//	    #   05 07 d0 01 00 00 00  (Master plugged in to a car and presumably
+//	    #                          telling slaves to limit power to 07 d0
+//	    #                          (20.00A). 01 byte indicates Master is plugged
+//	    #                          in to a car.)
 func (twcMessage *TwcMessage) SendMasterHeartbeat(fromAddress uint16, toAddress uint16, command byte, current uint16, setPoint uint16) {
 	copy(twcMessage.bytes, []byte{0xfb, 0xe0, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00})
 	twcMessage.PutFromAddress(fromAddress)

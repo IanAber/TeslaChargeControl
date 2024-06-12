@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io/fs"
 	"io/ioutil"
 	"math"
 )
@@ -25,6 +26,17 @@ type QuinticFunction struct {
 		E float64 `json:"e"`
 		F float64 `json:"f"`
 	} `json:"min"`
+}
+
+func (eq *QuinticFunction) SaveConstants(filename string) error {
+	marshalled, err := json.Marshal(eq)
+	if err == nil {
+		err = ioutil.WriteFile(filename, marshalled, fs.ModePerm)
+		if err == nil {
+			return eq.LoadConstants(filename)
+		}
+	}
+	return err
 }
 
 func (eq *QuinticFunction) LoadConstants(filename string) error {

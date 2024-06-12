@@ -7,7 +7,7 @@
       <auto-commit>false</auto-commit>
       <schema-control>MANUAL</schema-control>
       <jdbc-driver>com.mysql.cj.jdbc.Driver</jdbc-driver>
-      <jdbc-url>jdbc:mysql://192.168.10.5:3306/logging</jdbc-url>
+      <jdbc-url>jdbc:mysql://cloud.cedartechnology.com:33306/logging</jdbc-url>
       <driver-properties>
         <property name="serverTimezone" />
       </driver-properties>

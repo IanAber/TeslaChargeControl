@@ -1,0 +1,232 @@
+<html lang="en">
+<head>
+    <title id='Description'>Axiliary Water Heater Operation Tracker</title>
+    <link rel="stylesheet" href="../jqwidgets/styles/jqx.base.css" type="text/css" />
+    <link rel="stylesheet" href="../jqwidgets/styles/jqx.web.css" type="text/css" />
+    <script type="text/javascript" src="../scripts/jquery-3.6.0.min.js"></script>
+    <script type="text/javascript" src="../jqwidgets/jqxcore.js"></script>
+    <script type="text/javascript" src="../jqwidgets/jqxchart.core.js"></script>
+    <script type="text/javascript" src="../jqwidgets/jqxdraw.js"></script>
+    <script type="text/javascript" src="../jqwidgets/jqxdata.js"></script>
+    <script type="text/javascript">
+
+    var HeaterTimeOut;
+    var VoltageTimeOut;
+
+    function xAxisFormatFunction(value, itemIndex, series, group) {
+       	var dt = new Date(value * 1000);
+	return dt.getHours().toLocaleString('en-US', {minimumIntegerDigits: 2, useGrouping:false}) + ":"
+			 + dt.getMinutes().toLocaleString('en-US', {minimumIntegerDigits: 2, useGrouping:false});
+    }
+
+    function buildHeaterURL() {
+        end = new Date();
+        start = new Date(end - document.getElementById("timeRange").value)
+        return encodeURI("../realtime/getHeater?start="
+                        + start.getFullYear() + "-" + (start.getMonth() + 1) + "-" + start.getDate() + " " + start.getHours() + ":" + start.getMinutes()
+                        + "&end=" + end.getFullYear() + "-" + (end.getMonth() + 1) + "-" + end.getDate() + " " + end.getHours() + ":" + end.getMinutes());
+
+    }
+
+    function buildVoltageURL() {
+        end = new Date();
+        start = new Date(end - document.getElementById("timeRange").value)
+        return encodeURI("../realtime/getVoltage?start="
+                        + start.getFullYear() + "-" + (start.getMonth() + 1) + "-" + start.getDate() + " " + start.getHours() + ":" + start.getMinutes()
+                        + "&end=" + end.getFullYear() + "-" + (end.getMonth() + 1) + "-" + end.getDate() + " " + end.getHours() + ":" + end.getMinutes());
+    }
+
+    $(document).ready(function () {
+	// prepare heater jqxChart settings
+	var heaterSettings = {
+	    title: "Water Heater Activation",
+	    description: "Amount of time the water heater has been on today",
+	    enableAnimations: false,
+	    animationDuration: 1000,
+	    enableAxisTextAnimation: true,
+	    showLegend: true,
+	    padding: { left: 5, top: 5, right: 5, bottom: 5 },
+	    titlePadding: { left: 90, top: 0, right: 0, bottom: 10 },
+	    colorScheme: 'scheme04',
+	    categoryAxis: {
+		dataField: 'logged',
+		showGridLines: false,
+		textRotationAngle: 270,
+		unitInterval: 1800,
+		formatFunction: xAxisFormatFunction,
+		minValue: 0,
+		maxValue: 100
+	    },
+	    colorScheme: 'scheme01',
+	    seriesGroups: [{
+		type: 'steparea',
+		valueAxis: {
+		    interval: 1,
+		    gridLines: {
+			visible: true,
+			step: 1,
+		    },
+		    labels: {
+                        formatSettings: {
+                            decimalPlaces: 0,
+                        },
+                        visible: true,
+                        step: 1,
+                    },
+                    minValue: 0,
+                    maxValue: 7,
+                    description: 'Heater Power',
+                },
+                series: [{
+                    dataField: 'status',
+                    displayText: 'Level',
+                    lineColor: '#C00000',
+                    fillColor: '#FF1010',
+                }]
+	    }]
+        };
+            
+	// select the chartContainer DIV element and render the chart.
+        $('#heaterChartContainer').jqxChart(heaterSettings);
+
+        var voltageSettings = {
+	    title: "Battery Voltage Tracker",
+            description: "Tracks actual vs setpoint voltage from the inverter today",
+            enableAnimations: false,
+            animationDuration: 1000,
+            enableAxisTextAnimation: true,
+            showLegend: true,
+            padding: { left: 5, top: 5, right: 5, bottom: 5 },
+            titlePadding: { left: 90, top: 0, right: 0, bottom: 10 },
+            colorScheme: 'scheme04',
+            categoryAxis: {
+                dataField: 'logged',
+                showGridLines: false,
+                textRotationAngle: 270,
+                unitInterval: 1800,
+                formatFunction: xAxisFormatFunction,
+                minValue: 0,
+                maxValue: 100
+            },
+            colorScheme: 'scheme01',
+            seriesGroups: [{
+                type: 'spline',
+            	valueAxis: {
+                    minValue: 40,
+                    maxValue: 65,
+                    description: 'Battery Volts'
+                },
+                series: [{
+                    dataField: 'volts',
+                    displayText: 'Actual Volts'
+                },
+                {
+                    dataField: 'volts_setpoint',
+                    displayText: 'Setpoint Volts'
+                }]
+            }]
+        };
+
+        // select the chartContainer DIV element and render the chart.
+        $('#voltsChartContainer').jqxChart(voltageSettings);
+        HeaterTimeout = setInterval( function() {getHeater()}, 15000);
+        VoltageTimeout = setInterval( function() {getVoltage()}, 15000);
+        getHeater();
+	getVoltage();
+    });
+
+    function getHeater() {
+        fetch(buildHeaterURL())
+	    .then( function(response) {
+		if (response.status == 200) {
+		    response.json()
+		        .then(function(data) {
+                            now = new Date();
+                            end = Math.trunc(now.getTime() / 1000) + 60;
+                            start = end - document.getElementById("timeRange").value / 1000
+			    data.push({
+				"logged":(Math.trunc((now.getTime() / 1000)) + 1).toString(),
+				"status":"0"
+			    });
+			    $('#heaterChartContainer').jqxChart({'source':data});
+                            $('#heaterChartContainer').jqxChart({'categoryAxis':{
+                                dataField: 'logged',
+                                showGridLines: false,
+                                textRotationAngle: 270,
+                                unitInterval: 1800,
+                                formatFunction: xAxisFormatFunction,
+                                minValue: start,
+                                maxValue: end}});
+                            $('#heaterChartContainer').jqxChart('update');
+			});
+		    }
+		})
+            .catch(function(err) {
+                if(err.name === "TypeError" && err.message != "cancelled") {
+                    alert('Heater Fetch Error :-S' + err.message);
+		}
+            });
+    };
+	
+    function getVoltage() {
+	fetch(buildVoltageURL())
+	    .then( function(response) {
+		if (response.status == 200) {
+		    response.json()
+			.then(function(data) {
+                            now = new Date();
+                            end = Math.trunc(now.getTime() / 1000) + 60;
+                            start = end - document.getElementById("timeRange").value / 1000
+			    $('#voltsChartContainer').jqxChart({'source':data});
+                            $('#voltsChartContainer').jqxChart({'categoryAxis':{
+                                dataField: 'logged',
+                                showGridLines: false,
+                                textRotationAngle: 270,
+                                unitInterval: 1800,
+                                formatFunction: xAxisFormatFunction,
+                                minValue: start,
+                                maxValue: end}});
+                            $('#voltsChartContainer').jqxChart('update');
+                        });
+                    }
+                })
+            .catch(function(err) {
+                if(err.name === "TypeError" && err.message != "cancelled") {
+                    alert('Voltage Fetch Error :-S' + err.message);
+                }
+            });
+    };
+	
+    function goBack() {
+        window.clearInterval(VoltageTimeOut);
+        window.clearInterval(HeaterTimeOut);
+		if (window.history.length > 1) {
+				setTimeout(window.history.back(), 1000);
+			} else {
+				setTimeout(window.close(), 1000);
+			}
+    }
+
+    function updateValues() {
+        getVoltage();
+        getHeater();
+    }
+    </script>
+</head>
+    <body style="background:white;">
+        <div id='heaterChartContainer' style="width:100%; height: 48%" ></div>
+        <div id='voltsChartContainer' style="width:100%; height: 48%" /></div>
+        <div style="text-align:center; width:100%; height: 4%">
+            <button onClick="goBack()" style="width:50%;height:100%" >Back</button>
+            <select id="timeRange" onchange="updateValues()">
+                <option value=86400000>24 Hours</option>
+                <option value=43200000>12 Hours</option>
+                <option value=28800000 selected="selected">8 Hours</option>
+                <option value=14400000>4 Hours</option>
+                <option value=7200000>2 Hours</option>
+                <option value=3600000>1 Hour</option>
+                <option value=1800000>30 Minutes</option>
+            </select>
+        </div>
+    </body>
+</html>
