@@ -52,6 +52,9 @@ type InverterValues struct {
 	vBattDelta float32
 	qf         quinticFunction.QuinticFunction
 
+	iBattValues       [600]float32
+	iBattValuePointer int
+
 	mu sync.Mutex
 
 	Log bool
@@ -73,6 +76,18 @@ func (i *InverterValues) GetAmps() float32 {
 	i.mu.Lock()
 	defer i.mu.Unlock()
 	return i.amps
+}
+
+// GetAvgAmps returns the average battery current over the past 300 readings
+func (i *InverterValues) GetAvgAmps() float32 {
+	i.mu.Lock()
+	defer i.mu.Unlock()
+
+	avg := float32(0)
+	for _, val := range i.iBattValues {
+		avg += val
+	}
+	return avg / float32(len(i.iBattValues))
 }
 
 // GetSOC returns the battery state of charge in percent
@@ -183,6 +198,11 @@ func (i *InverterValues) SetAmps(amps float32) {
 	i.mu.Lock()
 	defer i.mu.Unlock()
 	i.amps = amps
+	i.iBattValues[i.iBattValuePointer] = amps
+	i.iBattValuePointer++
+	if i.iBattValuePointer >= len(i.iBattValues) {
+		i.iBattValuePointer = 0
+	}
 }
 
 func (i *InverterValues) SetSOC(soc float32) {

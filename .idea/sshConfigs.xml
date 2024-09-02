@@ -2,7 +2,7 @@
 <project version="4">
   <component name="SshConfigs">
     <configs>
-      <sshConfig authType="PASSWORD" connectionConfig="{&quot;serverAliveInterval&quot;:300}" host="cloud.cedartechnology.com" id="58426fb4-d2fd-4317-892f-5626a207ccd5" port="30022" customName="AberHome" nameFormat="CUSTOM" username="pi" useOpenSSHConfig="true">
+      <sshConfig authType="PASSWORD" connectionConfig="{&quot;serverAliveInterval&quot;:300}" host="cloud.cedartechnology.com" id="58426fb4-d2fd-4317-892f-5626a207ccd5" port="40022" customName="AberHome" nameFormat="CUSTOM" username="pi" useOpenSSHConfig="true">
         <option name="customName" value="AberHome" />
       </sshConfig>
     </configs>

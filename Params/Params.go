@@ -153,8 +153,8 @@ func (p *Params) ChangeCurrent(delta int16) bool {
 			// It has been at least 15 seconds since the last change so drop the current. Hold the current for 45 seconds if it would shut the car down to lower it further.
 			maxAmps += delta
 			if maxAmps < minAmps {
-				// Don't let it go below 0 Amps
-				maxAmps = 0
+				// Don't let it go below minAmps
+				maxAmps = minAmps
 			}
 			p.maxAmps = float32(maxAmps)
 			if p.log {

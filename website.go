@@ -371,19 +371,20 @@ func (nfs neuteredFileSystem) Open(path string) (http.File, error) {
 		return nil, err
 	}
 
-	s, err := f.Stat()
-	if s.IsDir() {
-		index := filepath.Join(path, "index.html")
-		if _, err := nfs.fs.Open(index); err != nil {
-			closeErr := f.Close()
-			if closeErr != nil {
-				return nil, closeErr
+	if s, err := f.Stat(); err != nil {
+		log.Println(err)
+	} else {
+		if s.IsDir() {
+			index := filepath.Join(path, "index.html")
+			if _, err := nfs.fs.Open(index); err != nil {
+				closeErr := f.Close()
+				if closeErr != nil {
+					return nil, closeErr
+				}
+				return nil, err
 			}
-
-			return nil, err
 		}
 	}
-
 	return f, nil
 }
 
@@ -540,12 +541,14 @@ func getValues(w http.ResponseWriter, _ *http.Request) {
 		"vBatt":%0.2f,
 		"iBatt":%0.2f,
 		"soc":%0.2f,
+		"iBattAvg":%0.2f,
 		"vBattDeltaMin":%0.2f,
 		"vBattDeltaMax":%0.2f,
 %s
 	}
 }`, iValues.GetFrequency(), iValues.GetSetPoint(),
 		iValues.GetVolts(), iValues.GetAmps(), iValues.GetSOC(),
+		iValues.GetAvgAmps(),
 		iValues.GetVBattDeltaMin(), iValues.GetVBattDeltaMax(), iValues.GetFlags())
 }
 
