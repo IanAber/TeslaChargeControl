@@ -1,6 +1,6 @@
 <html lang="en">
 <head>
-    <title id='Description'>Cedar Technology Solar Hot Water Generation</title>
+    <title id='Description'>Cedar Technology Air Conditioning</title>
     <link rel="stylesheet" href="../jqwidgets/styles/jqx.base.css" type="text/css" />
     <link rel="stylesheet" href="../jqwidgets/styles/jqx.web.css" type="text/css" />
     <script type="text/javascript" src="../scripts/jquery-3.6.0.min.js"></script>
@@ -25,7 +25,7 @@
 		function buildURLForTimes(start, end) {
 			$("#startAt").jqxDateTimeInput('setDate', start );
 			$("#endAt").jqxDateTimeInput('setDate', end );
-			url = encodeURI("../realtime/getsolartemps?start="
+			url = encodeURI("../realtime/getactemps?start="
 					+ start.getFullYear() + "-" + (start.getMonth() + 1) + "-" + start.getDate() + " " + start.getHours() + ":" + start.getMinutes()
 					+ "&end=" + end.getFullYear() + "-" + (end.getMonth() + 1) + "-" +  end.getDate() + " " + end.getHours() + ":" + end.getMinutes());
 			return url;
@@ -43,7 +43,6 @@
     	}
 
 
-        var PumpTimeOut;
 		var start = new Date();
         start.setSeconds(0);
         start.setMinutes(0);  
@@ -53,6 +52,7 @@
         end.setMinutes(59);
         end.setSeconds(59);
 
+//		function xAxisFormatFunction(value, itemIndex, series, group) {
 		function xAxisFormatFunction(value) {
         	var dt = new Date(value * 1000);
 			return dt.getHours().toLocaleString('en-US', {minimumIntegerDigits: 2, useGrouping:false}) + ":"
@@ -60,9 +60,9 @@
         }
 
         $(document).ready(function () {
-			var solarSettings = {
+			var acSettings = {
 				title: "Cedar Technology",
-				description: "Solar Hot Water Generation.",
+				description: "Air Conditioning.",
 				enableAnimations: false,
 				animationDuration: 1000,
 				enableAxisTextAnimation: true,
@@ -93,36 +93,30 @@
 							step: 1,
 						},
 						minValue: 0,
-						maxValue: 110,
-						description: 'Temperature in ℃',
+						maxValue: 50,
+						description: 'Temperature',
 					},
 					series: [{
-						dataField: 'SolarCollector',
-						displayText: 'Collector',
+						dataField: 'MatsInput',
+						displayText: 'Mats Input',
 						lineColor: '#80E080',
 						fillColor: '#80E080',
 					},					
 					{
-						dataField: 'SolarInlet',
-						displayText: 'Input',
+						dataField: 'MatsOutput',
+						displayText: 'Mats Output',
 						lineColor: '#000000',
 						fillColor: '#101010',
 					},
 					{
-						dataField: 'SolarOutlet',
-						displayText: 'Output',
+						dataField: 'DehumidifierOutput',
+						displayText: 'Dehumidifier Output',
 						lineColor: '#D02020',
 						fillColor: '#D02020',
-					// },
-					// {
-					// 	dataField: 'SolarExchanger',
-					// 	displayText: 'Exchanger',
-					// 	lineColor: '#2020D0',
-					// 	fillColor: '#2020D0',
 					}]
 				}]
 			};
-			$('#solarChartContainer').jqxChart(solarSettings);
+			$('#acChartContainer').jqxChart(acSettings);
 			sa = $("#startAt");
 			ea = $("#endAt")
 			sa.jqxDateTimeInput({ theme: "arctic", formatString: "F", showTimeButton: true, width: '300px', height: '25px' });
@@ -142,8 +136,8 @@
 							.then(function(data) {
 								let end = Math.trunc($("#endAt").jqxDateTimeInput('value') / 1000);
 								let start = ($("#startAt").jqxDateTimeInput('value') / 1000)
-								let interval = (end - start) / 50;
-								let chart = $('#solarChartContainer');
+								let interval = round((end - start) / 50);
+								let chart = $('#acChartContainer');
 			    				chart.jqxChart({source:data});
                             	chart.jqxChart({categoryAxis:{
 									dataField: 'logged',
@@ -161,17 +155,17 @@
                 })
 				.catch(function(err) {
 					if(err.name === "TypeError" && err.message !== "cancelled") {
-						alert('Solar Fetch Error :-S' + err.message);
+						alert('AC Fetch Error :-S' + err.message);
 					}
 				});
 		}
 		
 		function goBack() {
-			window.clearInterval(solarTimeOut);
+			window.clearInterval(acTimeOut);
 			if (window.history.length > 1) {
-				setTimeout(window.history.back, 1000);
+				setTimeout(window.history.back(), 1000);
 			} else {
-				setTimeout(window.close, 1000);
+				setTimeout(window.close(), 1000);
 			}
 		}
 		function getCurrent() {
@@ -191,7 +185,7 @@
     </script>
 </head>
     <body style="background:white;">
-        <div id='solarChartContainer' style="width:100%; height: 96%" ></div>
+        <div id='acChartContainer' style="width:100%; height: 96%" ></div>
 		<div style="text-align:center; height: 4%">
 			<div style="float:left;height:100%">
 				<button onClick="goBack()" style="width:100%">Back</button>&nbsp;

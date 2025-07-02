@@ -32,6 +32,7 @@ func setUpWebSite() {
 	router.HandleFunc("/realtime/getTesla", getTeslaData).Methods("GET")
 	router.HandleFunc("/realtime/getHeater", getHeaterData).Methods("GET")
 	router.HandleFunc("/realtime/getVoltage", getVoltageData).Methods("GET")
+	router.HandleFunc("/realtime/getactemps", getACTempData).Methods("GET")
 	router.HandleFunc("/ChargeParams", showChargeParams).Methods("GET")
 	router.HandleFunc("/ChargeParams", saveChargeParams).Methods("POST")
 
@@ -451,27 +452,6 @@ func disableSolarLogging(w http.ResponseWriter, r *http.Request) {
 	logSolar = false
 	showLoggingSelection(w, r)
 }
-
-//func enableHeater(w http.ResponseWriter, r *http.Request) {
-//	Heater.SetEnabled(true)
-//	getValues(w, r)
-//}
-
-//func disableHeater(w http.ResponseWriter, r *http.Request) {
-//	Heater.SetEnabled(false)
-//	Heater.SetHeater(0)
-//	getValues(w, r)
-//}
-
-//func enableElectrolyser(w http.ResponseWriter, r *http.Request) {
-//	Electrolyser.SetEnabled(true)
-//	getValues(w, r)
-//}
-//
-//func disableElectrolyser(w http.ResponseWriter, r *http.Request) {
-//	Electrolyser.SetEnabled(false)
-//	getValues(w, r)
-//}
 
 func reloadChargingFunction(w http.ResponseWriter, _ *http.Request) {
 	err := iValues.LoadFunctionConstants("/var/www/html/params/charge_params.json")

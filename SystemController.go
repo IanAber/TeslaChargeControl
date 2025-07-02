@@ -6,6 +6,7 @@ import (
 	"SystemController/twcSlave"
 	_ "crypto/aes"
 	"database/sql"
+	"errors"
 	"flag"
 	"github.com/IanAber/SMACanMessages"
 	"log"
@@ -19,7 +20,7 @@ import (
 
 // Version 2 makes parameters editable via the WEB interface
 
-const CHARGINGLINKS = `<a href="/startCharging">Start Charging</a><br><a href="/stopCharging">Stop Charging</a>`
+//const CHARGINGLINKS = `<a href="/startCharging">Start Charging</a><br><a href="/stopCharging">Stop Charging</a>`
 
 //const maxGasPressure = 34.0 // Pressure above which we do not increase the electrolyser output
 
@@ -362,7 +363,6 @@ func calculatePowerAvailable() {
 		}
 
 		powerState := iValues.GetChargeLevel()
-		//// If we get to a point where we are inside the ideal window before midday then preheat the electrolysers ready to produce hydrogen.
 		// Set the total car charging current for all cars charging
 		carCurrent := float32(0.0)
 		for i := range slaves {
@@ -505,7 +505,7 @@ func logToDatabase() {
 		var err = pDB.QueryRow("select greatest(`HotTankTop`, `HotTankMiddle`, `HotTankBottom`) as maxtemp from `temperatures` where `logged` > date_add(now(), interval -5 minute) order by `logged` desc limit 1;").Scan(&hotTankTemp)
 		if err != nil {
 			Heater.SetHotTankTemp(1000) // Be safe. If we can't get the temperature assume it is boiling to shut down the heater.
-			if err != sql.ErrNoRows {
+			if !errors.Is(err, sql.ErrNoRows) {
 				log.Printf("Error fetching hot tank temperature from the database - %s", err)
 				err = pDB.Close()
 				pDB = nil
@@ -519,26 +519,29 @@ func logToDatabase() {
 func GetTemperatures() {
 	log.Println("GetTemperatures...")
 	var temperatures struct {
-		SolarCollector int16 //TSOC1
-		SolarInlet     int16 //TSOPI
-		SolarOutlet    int16 //TSOPO
-		HotTankTop     int16 //TSH0
-		HotTankMiddle  int16 //TSH2
-		HotTankBottom  int16 //TSH1
+		SolarCollector int16
+		SolarInlet     int16
+		SolarOutlet    int16
+		HotTankTop     int16
+		HotTankMiddle  int16
+		HotTankBottom  int16
 
-		ColdTankBottom int16 //TSC0
-		ColdTankTop    int16 //TSC1
-		ColdTankMiddle int16 //TSC2
-		AmbientOutside int16 //TOU
-		SolarExchanger int16 //TSOS
-		Bedroom        int16 //TIN1
+		ColdTankBottom     int16
+		ColdTankTop        int16
+		ColdTankMiddle     int16
+		MatsInput          int16
+		MatsOutput         int16
+		DehumidifierOutput int16
+		//		AmbientOutside int16 //TOU
+		//		SolarExchanger int16 //TSOS
+		//		Bedroom        int16 //TIN1
 
-		CondenserIn   int16 //TCHCI_1
-		CondenserOut  int16 //TCHCO_1
-		EvaporatorIn  int16 //TCHEI_1
-		EvaporatorOut int16 //TCHEO_1
-		GeneratorIn   int16 //TCHGI_1
-		GeneratorOut  int16 //TCHGO_1
+		CondenserIn   int16
+		CondenserOut  int16
+		EvaporatorIn  int16
+		EvaporatorOut int16
+		GeneratorIn   int16
+		GeneratorOut  int16
 	}
 	esp1 := NewESPTemperature("http://ESPTEMP1.home")
 	esp2 := NewESPTemperature("http://ESPTEMP2.home")
@@ -563,9 +566,9 @@ func GetTemperatures() {
 		temperatures.ColdTankBottom = int16(temps[0] * 10)
 		temperatures.ColdTankTop = int16(temps[1] * 10)
 		temperatures.ColdTankMiddle = int16(temps[2] * 10)
-		temperatures.AmbientOutside = int16(temps[3] * 10)
-		temperatures.SolarExchanger = int16(temps[4] * 10)
-		temperatures.Bedroom = int16(temps[5] * 10)
+		temperatures.MatsInput = int16(temps[3] * 10)
+		temperatures.MatsOutput = int16(temps[4] * 10)
+		temperatures.DehumidifierOutput = int16(temps[5] * 10)
 
 		//		esp3.readTemperatures()
 		temps = esp3.getTemperatures()
@@ -584,7 +587,7 @@ func GetTemperatures() {
 		solarTemps.tankTop = temperatures.HotTankTop
 		solarTemps.tankMid = temperatures.HotTankMiddle
 		solarTemps.tankBottom = temperatures.HotTankBottom
-		solarTemps.exchanger = temperatures.SolarExchanger
+		//		solarTemps.exchanger = temperatures.SolarExchanger
 
 		if tempUpdate != nil {
 
@@ -611,16 +614,16 @@ func GetTemperatures() {
 		if _, err := pDB.Exec(`INSERT INTO logging.temperatures (HotTankTop, HotTankMiddle, HotTankBottom,
                                   						BufferTankTop, BufferTankMiddle, BufferTankBottom, 
                                   						GeneratorIn, GeneratorOut, EvaportatorIn, EvaporatorOut, CondenserIn, CondenserOut, 
-                                  						SolarCollector, SolarInlet, SolarOutlet, SolarExchanger, 
-                                  						AmbientOutside, Bedroom)
+                                  						SolarCollector, SolarInlet, SolarOutlet, MatsInput, 
+                                  						MatsOutput, DehumidifierOutput)
 										VALUES (?,?,?,?,?,?,
 										        ?,?,?,?,?,?,
 										        ?,?,?,?,?,?)`,
 			temperatures.HotTankTop, temperatures.HotTankMiddle, temperatures.HotTankBottom,
 			temperatures.ColdTankTop, temperatures.ColdTankMiddle, temperatures.ColdTankBottom,
 			temperatures.GeneratorIn, temperatures.GeneratorOut, temperatures.EvaporatorIn, temperatures.EvaporatorOut, temperatures.CondenserIn, temperatures.CondenserOut,
-			temperatures.SolarCollector, temperatures.SolarInlet, temperatures.SolarOutlet, temperatures.SolarExchanger,
-			temperatures.AmbientOutside, temperatures.Bedroom); err != nil {
+			temperatures.SolarCollector, temperatures.SolarInlet, temperatures.SolarOutlet, temperatures.MatsInput,
+			temperatures.MatsOutput, temperatures.DehumidifierOutput); err != nil {
 			log.Print(err)
 		}
 		go esp1.readTemperatures()
@@ -697,7 +700,7 @@ func main() {
 		for {
 			_, err := port.Read(buf[:])
 			if err != nil {
-				if err != serial.ErrTimeout {
+				if !errors.Is(err, serial.ErrTimeout) {
 					log.Println(err)
 				}
 				break

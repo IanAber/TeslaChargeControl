@@ -3,8 +3,9 @@
 	*author: Ian Abercrombie
 	*project: Battery Monitor
 -->
-<html>
+<html lang="en">
   <head>
+      <title>System Status</title>
     <link rel="stylesheet" href="/jqwidgets/styles/jqx.base.css" type="text/css" />
     <script type="text/javascript" src="/jqwidgets/jqxcore.js"></script>
     <script type="text/javascript" src="/jqwidgets/jqxdata.js"></script>
@@ -207,14 +208,6 @@
 				$("#SolarPump").jqxGauge({caption:{value:sCaption, position: 'bottom', offset: [0, 10]}});
 				$("#SolarPump").val(result.pumps.PSOP);
 			}
-		    if(LastData == null || LastData.temps.AmbientOutside != result.temps.AmbientOutside) {
-				$("#AmbientOutside").val(result.temps.AmbientOutside / 10);
-				document.getElementById("AmbientOutside_val").innerHTML = (result.temps.AmbientOutside / 10).toFixed(1) + '&#8451;<br />' + (((result.temps.AmbientOutside / 50) * 9) + 32).toFixed(1) + '&#8457;';
-		    }
-		    if(LastData == null || LastData.temps.Bedroom != result.temps.Bedroom) {
-				$("#Bedroom").val(result.temps.Bedroom / 10);
-				document.getElementById("Bedroom_val").innerHTML = (result.temps.Bedroom / 10).toFixed(1) + '&#8451;<br />' + (((result.temps.Bedroom / 50) * 9) + 32).toFixed(1) + '&#8457;';
-		    }
 		    if((LastData == null) || (LastData.temps.CondenserIn != result.temps.CondenserIn) || (LastData.temps.CondenserOut != result.temps.CondenserOut)) {
 				$("#CondenserLoop").val([result.temps.CondenserIn / 10, result.temps.CondenserOut / 10]);
 		    }
@@ -230,10 +223,13 @@
 		    if((LastData == null) || (LastData.temps.BufferTankBottom != result.temps.BufferTankBottom) || (LastData.temps.BufferTankMiddle != result.temps.BufferTankMiddle) || (LastData.temps.BufferTankTop != result.temps.BufferTankTop)) {
 				$("#BufferTank").val([result.temps.BufferTankBottom / 10, result.temps.BufferTankMiddle / 10, result.temps.BufferTankTop / 10]);
 		    }
-		    if((LastData == null) || (LastData.temps.SolarCollector != result.temps.SolarCollector) || (LastData.temps.SolarInlet != result.temps.SolarInlet)
-							 || (LastData.temps.SolarOutlet != result.temps.SolarOutlet) || (LastData.temps.SolarExchanger != result.temps.SolarExchanger)) {
-			 	$("#SolarTemps").val([result.temps.SolarCollector / 10, result.temps.SolarInlet / 10, result.temps.SolarOutlet / 10, result.temps.SolarExchanger / 10]);
-		    }
+            if((LastData == null) || (LastData.temps.MatsInput != result.temps.MatsInput) || (LastData.temps.MatsOutput != result.temps.MatsOutput) || (LastData.temps.DehumidifierOutput != result.temps.DehumidifierOutput)) {
+                $("#AC").val([result.temps.MatsInput / 10, result.temps.MatsOutput / 10, result.temps.DehumidifierOutput / 10]);
+            }
+            if((LastData == null) || (LastData.temps.SolarCollector != result.temps.SolarCollector) || (LastData.temps.SolarInlet != result.temps.SolarInlet)
+                || (LastData.temps.SolarOutlet != result.temps.SolarOutlet)) {
+                $("#SolarTemps").val([result.temps.SolarCollector / 10, result.temps.SolarInlet / 10, result.temps.SolarOutlet / 10]);
+            }
 		    $('#Solar').val([result.solar.J, result.solar.K, result.solar.A, result.solar.B, result.solar.C, result.solar.D, result.solar.E, result.solar.F, result.solar.G, result.solar.H, result.solar.I]);
 			solarTotal = ((parseFloat(result.solar.A)
 							+ parseFloat(result.solar.B) 
@@ -248,7 +244,7 @@
 							+ parseFloat(result.solar.K)) / 1000).toFixed(3);
 			sTitle = 'Solar Power '+ solarTotal + ' kW';
 			$('#Solar').jqxBarGauge({title:{ text: sTitle}});
-		};
+		}
 
         function setUpGauges(){
             let controlsHeight = $("#temperatures").height();
@@ -310,12 +306,8 @@
                     switch(index)
                     {
                         case 0 : return("Collector = " + value + '&#8451;');
-                            break;
                         case 1 : return ("Input = " + value + '&#8451;');
-                            break;
-                        case 2 : return ("Output = " + value + '&#8451;');
-                            break;
-                        default : return ("Exchanger = " + value + '&#8451;');
+                        default : return ("Output = " + value + '&#8451;');
                     };
                 }}
             });
@@ -346,66 +338,18 @@
                         switch(index)
                         {
                             case 0 : return("Inverter 1-A = " + value + 'W');
-                                break;
                             case 1 : return("Inverter 1-B = " + value + 'W');
-                                break;
                             case 2 : return("Inverter 2-A = " + value + 'W');
-                                break;
                             case 3 : return("Inverter 2-B = " + value + 'W');
-                                break;
                             case 4 : return("Inverter 2-C = " + value + 'W');
-                                break;
                             case 5 : return("Inverter 3-A = " + value + 'W');
-                                break;
                             case 6 : return("Inverter 3-B = " + value + 'W');
-                                break;
                             case 7 : return("Inverter 3-C = " + value + 'W');
-                                break;
                             case 8 : return("Inverter 4-A = " + value + 'W');
-                                break;
                             case 9 : return("Inverter 4-B = " + value + 'W');
-                                break;
                             default : return ("Inverter 4-C = " + value + 'W');
                         };
                     }}
-            });
-            $('#AmbientOutside').jqxLinearGauge({
-                width: controlsWidth / 2,
-                height: controlsHeight - ($("#AmbientOutside_header").height() + 10),
-                background: {
-                    borderRadius: 3,
-                },
-                orientation: 'vertical',
-                ticksMinor: {interval: 5, size: '5%'},
-                ticksMajor: {interval: 10,size: '10%'},
-                ticksOffset: ['10%', '4%'],
-                ticksPosition: 'far',
-                pointer: {size: '25%', style:{fill: 'red'}, offset:'-30%'},
-                scaleLength: '92%',
-                max: 45,
-                min: -5,
-                labels: {interval: 10, offset: "5%", position: 'far', formatValue: function(value, position){return value;}},
-                value: 0,
-                animationDuration: 0,
-            });
-            $('#Bedroom').jqxLinearGauge({
-                width: controlsWidth / 2,
-                height: controlsHeight - ($("#Bedroom_header").height() + 10),
-                background: {
-                    borderRadius: 3,
-                },
-                orientation: 'vertical',
-                ticksMinor: {interval: 5, size: '5%'},
-                ticksMajor: {interval: 10,size: '10%'},
-                ticksOffset: ['10%', '4%'],
-                ticksPosition: 'far',
-                pointer: {size: '25%', style:{fill: 'red'}, offset:'-30%'},
-                scaleLength: '92%',
-                max: 45,
-                min: -5,
-                labels: {interval: 10, offset: "5%", position: 'far', formatValue: function(value, position){return value;}},
-                value: 0,
-                animationDuration: 0,
             });
             $('#HotTank').jqxBarGauge({
                 width: controlsWidth,
@@ -434,11 +378,9 @@
                         switch(index)
                         {
                             case 2 : return("Top = " + value + '&#8451;');
-                                break;
                             case 1 : return ("Middle = " + value + '&#8451;');
-                                break;
                             default : return ("Bottom = " + value + '&#8451;');
-                        };
+                        }
                     }}
             });
             $('#BufferTank').jqxBarGauge({
@@ -467,11 +409,43 @@
                     formatFunction: function (value, index){
                         switch(index)
                         {
-                            case 2 : return("Top = " + value + '&#8451;');
-                                break;
-                            case 1 : return ("Middle = " + value + '&#8451;');
-                                break;
+                            case 2 : return("Top = " + value + '&#8451;')
+                            case 1 : return ("Middle = " + value + '&#8451;')
                             default : return ("Bottom = " + value + '&#8451;');
+                        }
+                    }}
+            });
+            $('#AC').jqxBarGauge({
+                width: controlsWidth,
+                height: controlsHeight,
+                values: [0.0, 0.0, 0.0],
+                min: 5,
+                max: 60,
+                animationDuration: 0,
+                startAngle: 265,
+                endAngle: 275,
+                title:	{
+                    text: 'Air Conditioning',
+                    font: { size: 12, color: 'black', weight: 'bold', family:"Segoi-UI"},
+                    margin: { top: 0, bottom: 2, left: 0, right: 0},
+                    verticalAlignment: 'bottom'
+                },
+                labels: {
+                    font: {size: 8,},
+                    precision: 1,
+                },
+                colorScheme: 'customColors',
+                customColorScheme: { name: 'customColors', colors: ['#860000', '#000099', '#088088'] },
+                tooltip: {visible: true,
+                    precision: 1,
+                    formatFunction: function (value, index){
+                        switch(index)
+                        {
+                            case 2 : return("Dehumidifier = " + value + '&#8451;');
+                                break;
+                            case 1 : return ("Output = " + value + '&#8451;');
+                                break;
+                            default : return ("Input = " + value + '&#8451;');
                         };
                     }}
             });
@@ -499,7 +473,7 @@
             tooltip: {visible: true,
                       precision: 1,
                       formatFunction: function (value, index){
-                                            if(index == 0)
+                                            if(index === 0)
                                                 return("In = " + value + '&#8451;');
                                             else
                                                 return ("Out = " + value + '&#8451;');
@@ -530,7 +504,7 @@
                     visible: true,
                     precision: 1,
                     formatFunction: function (value, index){
-                        if(index == 0)
+                        if(index === 0)
                             return("In = " + value + '&#8451;');
                         else
                             return ("Out = " + value + '&#8451;');
@@ -562,7 +536,7 @@
                     visible: true,
                     precision: 1,
                     formatFunction: function (value, index){
-                        if(index == 0)
+                        if(index === 0)
                             return("In = " + value + '&#8451;');
                         else
                             return ("Out = " + value + '&#8451;');
@@ -605,7 +579,6 @@
                                             switch(index)
                                             {
                                                 case 0 : return("Available = " + value + 'A');
-                                                    break;
                                                 default : return ("Charging = " + value + 'A');
                                             };
                                         }}
@@ -660,7 +633,7 @@
                                 case 0 : return("Setpoint = " + value + 'V');
                                     break;
                                 default : return ("Battery = " + value + 'V');
-                            };
+                            }
                         }
                 }
             });
@@ -679,7 +652,6 @@
                 max: 250,
                 min: -250,
                 value: 0,
-                radius: '50%',
                 animationDuration: 500,
                 cap: {size: '5%', style: { fill: '#ff0000', stroke: '#00ff00' }, visible: true},
                 caption: {value: 'Battery Current', position: 'bottom', offset: [0, 10], visible: true},
@@ -697,7 +669,7 @@
                 scaleLength: '90%',
                 max: 100,
                 min: 0,
-                labels: {interval: 20, offset: '-25%', position: 'far', formatValue: function(value, position){return value + "%";}},
+                labels: {interval: 20, offset: '-25%', position: 'far', formatValue: function(value){return value + "%";}},
                 value: 75,
                 animationDuration: 0,
                 ranges: [
@@ -725,7 +697,7 @@
                 colorScheme: 'scheme02',
                 labels: {
                     position: 'far',
-                    formatValue: function(val, pos){if ((val % 2) == 1) return ""; else return val + "Hz";},
+                    formatValue: function(val){if ((val % 2) === 1) return ""; else return val + "Hz";},
                     interval: 1,
                 },
                 ticksMajor: {size: '10%', interval: 1},
@@ -736,7 +708,7 @@
                     {startValue: 61, endValue: 63, style: {fill: '#FF4800', stroke: '#FF4800'}}
                 ],
             });
-	};
+	}
 	function reloadPage() {
 	  	var id = Math.max(
     		window.setInterval(noop, 1000),
@@ -748,15 +720,15 @@
 		window.location.reload(true)
 
 		function noop(){}
-	};
+	}
 
 	function switchElectrolyser() {
 		breaker = $("#electrolyserSwitch")
-		if (breaker.attr("src") == "images/breaker_off.png") {
+		if (breaker.attr("src") === "images/breaker_off.png") {
 			breaker.attr("src", "images/breaker_on.png");
 			fetch('http://' + window.location.hostname + ':8080/enableElectrolyser')
 			.then( function(response) {
-					if (response.status == 200) {
+					if (response.status === 200) {
 						response.json()
 							.then(function(Data) {
 								setRealTimeData(Data);
@@ -771,7 +743,7 @@
 			breaker.attr("src", "images/breaker_off.png")
 			fetch('http://' + window.location.hostname + ':8080/disableElectrolyser')
 			.then( function(response) {
-					if (response.status == 200) {
+					if (response.status === 200) {
 						response.json()
 							.then(function(Data) {
 								setRealTimeData(Data);
@@ -785,13 +757,13 @@
 		}
 	}
 
-	function switchHeater(enable) {
+	function switchHeater() {
 		breaker = $("#heaterSwitch");
-		if (breaker.attr("src") == "images/breaker_off.png") {
+		if (breaker.attr("src") === "images/breaker_off.png") {
 			breaker.attr("src","images/breaker_on.png");
 			fetch('http://' + window.location.hostname + ':8080/enableHeater')
 				.then( function(response) {
-					if (response.status == 200) {
+					if (response.status === 200) {
 						response.json()
 							.then(function(Data) {
 								setRealTimeData(Data);
@@ -806,7 +778,7 @@
 			breaker.attr("src","images/breaker_off.png")
 			fetch('http://' + window.location.hostname + ':8080/disableHeater')
 				.then( function(response) {
-					if (response.status == 200) {
+					if (response.status === 200) {
 						response.json()
 							.then(function(Data) {
 								setRealTimeData(Data);
@@ -839,36 +811,9 @@
         div.centered {
             text-align: center;
             margin:auto;
-            margin-top: 0px;
-            margin-bottom: 0px;
+            margin-top: 0;
+            margin-bottom: 0;
         }
-    	div.tempGauge{
-            text-align: center;
-    		float:left;
-    		width:50px;
-    		height:100%;
-    		margin-left:0;
-    		margin-right:0;
-            font-size:6pt;
-            border:1pt;
-    	}
-    	div.tempGaugeGauge{
-    		top:0;
-    		width:100%;
-    		height:60%;
-    		margin-left:0;
-    		margin-right:0;
-    	}
-    	div.jqxTempGauge{
-    		margin-left:1%;
-    		margin-right:1%;
-    	}
-    	span.tempGaugeValue{
-    		text-align:center;
-    	}
-    	.jqx-gauge-label{
-    		font-size:xx-small;
-    	}
     	.BUTTON_JKX {
 		   background: #2FC8F6;
 		   background-image: -webkit-linear-gradient(top, #2FC8F6, #4036D0);
@@ -911,7 +856,7 @@
   </head>
   <body>
     <div style="height:100%;width:100%; display: grid; grid-template-rows: 33% 33% 33%">
-      <div id='temperatures' style="top:0;left:0;margin:0; display: grid; grid-template-columns: 20vw 20vw 20vw 10vw 10vw 20vw; grid-template-rows: auto">
+      <div id='temperatures' style="top:0;left:0;margin:0; display: grid; grid-template-columns: 20vw 20vw 20vw 20vw 20vw; grid-template-rows: auto">
         <div class="centered" style="display: grid; grid-template-rows: auto 3em">
             <div id="SolarPumpContainer">
                 <div id='SolarPump' style='margin-left:0px;margin-right:0px;margin-top:1%;margin-bottom:0' onclick="window.open('trackers/solarPump.html')"></div>
@@ -930,21 +875,10 @@
           </div>
           <div id='GeneratorStatus' style='width:100%; height:1em; text-align:center; font-size:x-small'>Generator Status</div>
         </div>
-        <div class="tempGauge" id="AmbientOutside_Gauge">
-          <p id='AmbientOutside_header' style='text-align:center; width:100%; margin: 0px;'>Outside<br />
-            <span id='AmbientOutside_val' class="tempGaugeValue">---&#8451;<br />---&#8457;</span>
-          </p>
-          <div class="tempGaugeGauge">
-            <div id='AmbientOutside'></div>
-          </div>
-        </div>
-        <div class="tempGauge" id="Bedroom_Gauge">
-          <p id="Bedroom_header" style='text-align:center; width:100%; margin:0px'>Bedroom<br />
-            <span id='Bedroom_val' class="tempGaugeValue">---&#8451;<br />---&#8457;</span>
-          </p>
-          <div class="tempGaugeGauge">
-            <div id='Bedroom'></div>
-          </div>
+        <div class="centered" onclick="window.open('trackers/ac_temps.html')">
+            <div style="width:100%; height:90%;margin-left:auto;margin-right:auto;font-size:x-small">
+                <div id='AC'>Air Conditioning</div>
+            </div>
         </div>
         <div class="centered">
             <div>

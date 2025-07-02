@@ -42,7 +42,7 @@
 			return buildURLForTimes(start, end);
     	}
 
-		function xAxisFormatFunction(value, itemIndex, series, group) {
+		function xAxisFormatFunction(value) {
         	var dt = new Date(value * 1000);
 			return dt.getHours().toLocaleString('en-US', {minimumIntegerDigits: 2, useGrouping:false}) + ":" + dt.getMinutes().toLocaleString('en-US', {minimumIntegerDigits: 2, useGrouping:false});
         }
@@ -57,7 +57,6 @@
                 showLegend: true,
                 padding: { left: 5, top: 5, right: 5, bottom: 5 },
                 titlePadding: { left: 90, top: 0, right: 0, bottom: 10 },
-                colorScheme: 'scheme04',
                 categoryAxis: {
 					dataField: 'logged',
 					showGridLines: false,
@@ -186,38 +185,39 @@
                     if (response.status == 200) {
                         response.json()
                             .then(function(data) {
-								end = Math.trunc($("#endAt").jqxDateTimeInput('value') / 1000);
-								start = ($("#startAt").jqxDateTimeInput('value') / 1000)
-								interval = (end - start) / 50;
+								let end = Math.trunc($("#endAt").jqxDateTimeInput('value') / 1000);
+								let start = ($("#startAt").jqxDateTimeInput('value') / 1000)
+								let interval = Math.round((end - start) / 25);
+                                let chart = $('#chargingChartContainer')
 
-                                $('#chargingChartContainer').jqxChart({'source':data});
-                                $('#chargingChartContainer').jqxChart({'categoryAxis':{
+                                chart.jqxChart({'source':data});
+                                chart.jqxChart({'categoryAxis':{
                                     dataField: 'logged',
                                     showGridLines: false,
                                     textRotationAngle: 270,
-                                    unitInterval: 1800,
+                                    unitInterval: interval,
                                     formatFunction: xAxisFormatFunction,
                                     'minValue':start,
                                     'maxValue':end}});
-                                $('#chargingChartContainer').jqxChart('update');
+                                chart.jqxChart('update');
 
 								$("#waiting").hide();
                             });
                         }
                     })
                 .catch(function(err) {
-                    if(err.name === "TypeError" && err.message != "cancelled") {
+                    if(err.name === "TypeError" && err.message !== "cancelled") {
                         alert('Charging Fetch Error :-S' + err.message);
                     }
                 });
-        };
+        }
         
         function goBack() {
             window.clearInterval(ChargingTimeout);
             if (window.history.length > 1) {
-                    setTimeout(window.history.back(), 1000);
+                    setTimeout(window.history.back, 1000);
                 } else {
-                    setTimeout(window.close(), 1000);
+                    setTimeout(window.close, 1000);
                 }
         }
 
@@ -245,6 +245,7 @@
             <div style="float:left">
                 <label for="timeRange">Time Span</label>
                 <select id="timeRange" onchange="getCurrent()">
+                    <option value=604800000>1 Week</option>
                     <option value=259200000>3 Days</option>
                     <option value=172800000>2 Days</option>
                     <option value=86400000>24 Hours</option>
@@ -254,6 +255,7 @@
                     <option value=7200000>2 Hours</option>
                     <option value=3600000>1 Hour</option>
                     <option value=1800000>30 Minutes</option>
+                    <option value=900000>15 Minutes</option>
                     <option value=0>Custom</option>
                 </select>
             </div>

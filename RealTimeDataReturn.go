@@ -26,25 +26,25 @@ type PumpData struct {
 }
 
 type TempData struct {
-	Logged           string  `json:"logged"`
-	AmbientOutside   float32 `json:"AmbientOutside"`
-	Bedroom          float32 `json:"Bedroom"`
-	CondenserIn      float32 `json:"CondenserIn"`
-	CondenserOut     float32 `json:"CondenserOut"`
-	GeneratorIn      float32 `json:"GeneratorIn"`
-	GeneratorOut     float32 `json:"GeneratorOut"`
-	EvaporatorIn     float32 `json:"EvaporatorIn"`
-	EvaporatorOut    float32 `json:"EvaporatorOut"`
-	HotTankTop       float32 `json:"HotTankTop"`
-	HotTankBottom    float32 `json:"HotTankBottom"`
-	HotTankMiddle    float32 `json:"HotTankMiddle"`
-	BufferTankBottom float32 `json:"BufferTankBottom"`
-	BufferTankTop    float32 `json:"BufferTankTop"`
-	BufferTankMiddle float32 `json:"BufferTankMiddle"`
-	SolarCollector   float32 `json:"SolarCollector"`
-	SolarInlet       float32 `json:"SolarInlet"`
-	SolarOutlet      float32 `json:"SolarOutlet"`
-	SolarExchanger   float32 `json:"SolarExchanger"`
+	Logged             string  `json:"logged"`
+	DehumidifierOutput float32 `json:"DehumidifierOutput"`
+	MatsInput          float32 `json:"MatsInput"`
+	MatsOutput         float32 `json:"MatsOutput"`
+	CondenserIn        float32 `json:"CondenserIn"`
+	CondenserOut       float32 `json:"CondenserOut"`
+	GeneratorIn        float32 `json:"GeneratorIn"`
+	GeneratorOut       float32 `json:"GeneratorOut"`
+	EvaporatorIn       float32 `json:"EvaporatorIn"`
+	EvaporatorOut      float32 `json:"EvaporatorOut"`
+	HotTankTop         float32 `json:"HotTankTop"`
+	HotTankBottom      float32 `json:"HotTankBottom"`
+	HotTankMiddle      float32 `json:"HotTankMiddle"`
+	BufferTankBottom   float32 `json:"BufferTankBottom"`
+	BufferTankTop      float32 `json:"BufferTankTop"`
+	BufferTankMiddle   float32 `json:"BufferTankMiddle"`
+	SolarCollector     float32 `json:"SolarCollector"`
+	SolarInlet         float32 `json:"SolarInlet"`
+	SolarOutlet        float32 `json:"SolarOutlet"`
 }
 
 type SolarData struct {
@@ -183,10 +183,10 @@ func getData(w http.ResponseWriter, _ *http.Request) {
 
 	getSolarStringData(&result.Solar)
 
-	if rows, err := pDB.Query(`SELECT Logged, AmbientOutside, Bedroom, 
+	if rows, err := pDB.Query(`SELECT Logged, MatsInput, MatsOutput, 
        					CondenserIn, CondenserOut, GeneratorIn, GeneratorOut, EvaportatorIn, EvaporatorOut,
        					HotTankTop, HotTankMiddle, HotTankBottom, BufferTankTop, BufferTankMiddle, BufferTankBottom, 
-       					SolarCollector, SolarInlet, SolarOutlet, SolarExchanger
+       					SolarCollector, SolarInlet, SolarOutlet, DehumidifierOutput
 					FROM temperatures ORDER BY Logged DESC LIMIT 1`); err != nil {
 		ReturnJSONError(w, "Temperature Data", err, http.StatusInternalServerError, true)
 		return
@@ -197,12 +197,12 @@ func getData(w http.ResponseWriter, _ *http.Request) {
 			}
 		}()
 		if rows.Next() {
-			if err := rows.Scan(&result.Temps.Logged, &result.Temps.AmbientOutside, &result.Temps.Bedroom,
+			if err := rows.Scan(&result.Temps.Logged, &result.Temps.MatsInput, &result.Temps.MatsOutput,
 				&result.Temps.CondenserIn, &result.Temps.CondenserOut, &result.Temps.GeneratorIn, &result.Temps.GeneratorOut,
 				&result.Temps.EvaporatorIn, &result.Temps.EvaporatorOut,
 				&result.Temps.HotTankTop, &result.Temps.HotTankMiddle, &result.Temps.HotTankBottom,
 				&result.Temps.BufferTankTop, &result.Temps.BufferTankMiddle, &result.Temps.BufferTankBottom,
-				&result.Temps.SolarCollector, &result.Temps.SolarInlet, &result.Temps.SolarOutlet, &result.Temps.SolarExchanger); err != nil {
+				&result.Temps.SolarCollector, &result.Temps.SolarInlet, &result.Temps.SolarOutlet, &result.Temps.DehumidifierOutput); err != nil {
 				ReturnJSONError(w, "Temperature Data", err, http.StatusInternalServerError, true)
 				return
 			}
@@ -299,15 +299,6 @@ type HotTankValue struct {
 	Mean   float32 `json:"mean"`
 }
 
-// getHotTankData returns the set of hot tank values between the provided start and end times as a JSON array
-//
-//	{
-//		"logged":string
-//		"TSH0":float
-//		"TSH1":float
-//		"TSH2":float
-//		"mean":float
-//	}
 func getHotTankData(w http.ResponseWriter, r *http.Request) {
 	var Results []*HotTankValue
 	const DeviceString = "Hot Tank Data"
@@ -352,12 +343,61 @@ func getHotTankData(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+type ACValue struct {
+	Logged             string  `json:"logged"`
+	MatsInput          float32 `json:"MatsInput"`
+	MatsOutput         float32 `json:"MatsOutput"`
+	DehumidifierOutput float32 `json:"DehumidifierOutput"`
+}
+
+func getACTempData(w http.ResponseWriter, r *http.Request) {
+	var Results []*ACValue
+	const DeviceString = "Hot Tank Data"
+
+	start, end, err := GetTimeRange(r)
+	if err != nil {
+		ReturnJSONError(w, DeviceString, err, http.StatusBadRequest, false)
+		return
+	}
+
+	if rows, err := pDB.Query(`select min(unix_timestamp(logged)) as logged, AVG(MatsInput), AVG(MatsOutput), AVG(DehumidifierOutput)
+					from temperatures where logged between ? and ? group by unix_timestamp(logged) DIV 60`, start, end); err != nil {
+		ReturnJSONError(w, DeviceString, err, http.StatusInternalServerError, true)
+		return
+	} else {
+		defer func() {
+			if err := rows.Close(); err != nil {
+				log.Print(err)
+			}
+		}()
+		for rows.Next() {
+			result := new(ACValue)
+			if err := rows.Scan(&result.Logged, &result.MatsInput, &result.MatsOutput, &result.DehumidifierOutput); err != nil {
+				ReturnJSONError(w, DeviceString, err, http.StatusInternalServerError, true)
+				return
+			}
+			// Calculate the weighted mean temperature
+
+			result.MatsInput /= 10.0
+			result.MatsOutput /= 10.0
+			result.DehumidifierOutput /= 10.0
+			Results = append(Results, result)
+		}
+		if resultJSON, err := json.Marshal(Results); err != nil {
+			ReturnJSONError(w, DeviceString, err, http.StatusInternalServerError, true)
+		} else {
+			if _, err := fmt.Fprintf(w, string(resultJSON)); err != nil {
+				log.Print(err)
+			}
+		}
+	}
+}
+
 type SolarTempValue struct {
 	Logged         string  `json:"logged"`
 	SolarCollector float32 `json:"SolarCollector"`
 	SolarInlet     float32 `json:"SolarInlet"`
 	SolarOutlet    float32 `json:"SolarOutlet"`
-	SolarExchanger float32 `json:"SolarExchanger"`
 }
 
 func getSolarTempData(w http.ResponseWriter, r *http.Request) {
@@ -370,7 +410,7 @@ func getSolarTempData(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if rows, err := pDB.Query(`select unix_timestamp(logged) as logged, SolarCollector, SolarInlet, SolarOutlet, SolarExchanger
+	if rows, err := pDB.Query(`select unix_timestamp(logged) as logged, SolarCollector, SolarInlet, SolarOutlet
 								from temperatures where Logged between ? AND ?`, start, end); err != nil {
 		ReturnJSONError(w, DeviceString, err, http.StatusInternalServerError, true)
 		return
@@ -382,7 +422,7 @@ func getSolarTempData(w http.ResponseWriter, r *http.Request) {
 		}()
 		for rows.Next() {
 			result := new(SolarTempValue)
-			if err := rows.Scan(&result.Logged, &result.SolarCollector, &result.SolarInlet, &result.SolarOutlet, &result.SolarExchanger); err != nil {
+			if err := rows.Scan(&result.Logged, &result.SolarCollector, &result.SolarInlet, &result.SolarOutlet); err != nil {
 				ReturnJSONError(w, DeviceString, err, http.StatusInternalServerError, true)
 				return
 			}
@@ -391,7 +431,6 @@ func getSolarTempData(w http.ResponseWriter, r *http.Request) {
 			result.SolarInlet /= 10.0
 			result.SolarOutlet /= 10.0
 			result.SolarCollector /= 10.0
-			result.SolarExchanger /= 10.0
 			Results = append(Results, result)
 		}
 		if resultJSON, err := json.Marshal(Results); err != nil {
@@ -696,6 +735,17 @@ func getCurrent(w http.ResponseWriter, r *http.Request) {
 						GROUP BY UNIX_TIMESTAMP(logged) DIV 300
 						ORDER BY logged DESC`
 
+	const SQLBy1hr = `SELECT MIN(UNIX_TIMESTAMP(logged)) AS logged
+							, AVG(iBatt) AS amps
+							, AVG(vBatt) AS volts
+							, AVG(state_of_charge) AS soc
+							, AVG(frequency) AS frequency
+							, AVG(vSetpoint) AS setpoint
+						 FROM inverter_values
+						WHERE logged BETWEEN ? AND ?
+						GROUP BY UNIX_TIMESTAMP(logged) DIV 3600
+						ORDER BY logged DESC`
+
 	var sql string
 	var Results []*CurrentData
 	const DeviceString = "Current Data"
@@ -707,7 +757,11 @@ func getCurrent(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if end.Sub(start) > (time.Hour * 4) {
-		sql = SQLBy5Mins
+		if end.Sub(start) > (time.Hour * 47) {
+			sql = SQLBy1hr
+		} else {
+			sql = SQLBy5Mins
+		}
 	} else {
 		sql = SQLDirect
 	}
