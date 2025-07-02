@@ -148,9 +148,10 @@
 						response.json()
 							.then(function(data) {
 
-                            	now = new Date();
-                            	end = Math.trunc(now.getTime() / 1000);
-                            	start = end - document.getElementById("timeRange").value / 1000
+                            	let now = new Date();
+                            	let end = Math.trunc(now.getTime() / 1000);
+                            	let start = end - document.getElementById("timeRange").value / 1000
+                                let interval = Math.round((end - start) / 25);
 								switch (document.getElementById("param").value) {
 									case "current" : _description = "Current in Amps";
 													_maxValue = "10";
@@ -167,8 +168,9 @@
 												_decimalPlaces = 0;
 												_value = 'watts';
 								};
-			    				$('#solarChartContainer').jqxChart({source:data});
-								$('#solarChartContainer').jqxChart({seriesGroups: [{
+                                let chart = $('#solarChartContainer');
+                                chart.jqxChart({source:data});
+								chart.jqxChart({seriesGroups: [{
 										type: 'spline',
 										valueAxis: {
 											interval: 1,
@@ -254,16 +256,16 @@
 											fillColor: '#A040A0',
 										}]
 									}]});
-								$('#solarChartContainer').jqxChart('refresh');
-                            	$('#solarChartContainer').jqxChart({categoryAxis:{
+								chart.jqxChart('refresh');
+                            	chart.jqxChart({categoryAxis:{
                                 	dataField: 'logged',
                         	        showGridLines: false,
                             	    textRotationAngle: 270,
-                                	unitInterval: document.getElementById("timeRange").value / 24000,
+                                    unitInterval: interval,
                                 	formatFunction: xAxisFormatFunction,
                                 	minValue: start,
                                 	maxValue: end}});
-                            	$('#solarChartContainer').jqxChart('update');
+                            	chart.jqxChart('update');
                         });
                     }
                 })
@@ -294,6 +296,7 @@
 			</select>
             <button onClick="goBack()" style="width:50%;height:100%" >Back</button>
             <select id="timeRange" onchange="getSolar()">
+                <option value=604800000>1 Week</option>
                 <option value=259200000>3 Days</option>
                 <option value=172800000>2 Days</option>
                 <option value=86400000>24 Hours</option>
@@ -303,6 +306,7 @@
                 <option value=7200000 selected="selected">2 Hours</option>
                 <option value=3600000>1 Hour</option>
                 <option value=1800000>30 Minutes</option>
+                <option value=900000>15 Minutes</option>
             </select>
         </div>
     </body>
