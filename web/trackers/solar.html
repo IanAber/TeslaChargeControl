@@ -3,7 +3,7 @@
     <title id='Description'>Cedar Technology Solar Production Tracker</title>
     <link rel="stylesheet" href="../jqwidgets/styles/jqx.base.css" type="text/css" />
     <link rel="stylesheet" href="../jqwidgets/styles/jqx.web.css" type="text/css" />
-    <script type="text/javascript" src="../scripts/jquery-1.11.1.min.js"></script>
+    <script type="text/javascript" src="../scripts/jquery-3.6.0.min.js"></script>
     <script type="text/javascript" src="../jqwidgets/jqxcore.js"></script>
     <script type="text/javascript" src="../jqwidgets/jqxchart.core.js"></script>
     <script type="text/javascript" src="../jqwidgets/jqxdraw.js"></script>
@@ -22,7 +22,7 @@
 							+ "&end=" + end.getFullYear() + "-" + (end.getMonth() + 1) + "-" + end.getDate() + " " + end.getHours() + ":" + end.getMinutes());
 		}
 
-		function xAxisFormatFunction(value, itemIndex, series, group) {
+		function xAxisFormatFunction(value) {
 			var dt = new Date(value * 1000);
 			return dt.getHours().toLocaleString('en-US', {minimumIntegerDigits: 2, useGrouping:false}) + ":"
 														+ dt.getMinutes().toLocaleString('en-US', {minimumIntegerDigits: 2, useGrouping:false});
@@ -38,7 +38,6 @@
 				showLegend: true,
 				padding: { left: 5, top: 5, right: 5, bottom: 5 },
 				titlePadding: { left: 90, top: 0, right: 0, bottom: 10 },
-				colorScheme: 'scheme04',
 				categoryAxis: {
 					dataField: 'logged',
 					showGridLines: false,
@@ -144,7 +143,7 @@
 		function getSolar() {
 			fetch(buildSolarURL())
 				.then( function(response) {
-					if (response.status == 200) {
+					if (response.status === 200) {
 						response.json()
 							.then(function(data) {
 
@@ -167,7 +166,7 @@
 												_maxValue = "3300";
 												_decimalPlaces = 0;
 												_value = 'watts';
-								};
+								}
                                 let chart = $('#solarChartContainer');
                                 chart.jqxChart({source:data});
 								chart.jqxChart({seriesGroups: [{
@@ -270,18 +269,18 @@
                     }
                 })
 				.catch(function(err) {
-					if(err.name === "TypeError" && err.message != "cancelled") {
+					if(err.name === "TypeError" && err.message !== "cancelled") {
 						alert('Solar Fetch Error :-S' + err.message);
 					}
 				});
-		};
+		}
 		
 		function goBack() {
 			window.clearInterval(solarTimeOut);
 			if (window.history.length > 1) {
-				setTimeout(window.history.back(), 1000);
+				setTimeout(window.history.back, 1000);
 			} else {
-				setTimeout(window.close(), 1000);
+				setTimeout(window.close, 1000);
 			}
 		}
     </script>
@@ -289,12 +288,14 @@
     <body style="background:white;">
         <div id='solarChartContainer' style="width:100%; height: 96%" ></div>
 		<div style="text-align:center; width:100%; height: 4%">
+            <label for="param">Parameter</label>
 			<select id="param" onchange="getSolar()">
 				<option value="power" selected="selected">Power (W)</option>
 				<option value="current">Current (A)</option>
 				<option value="volts">Voltage (V)</option>
 			</select>
             <button onClick="goBack()" style="width:50%;height:100%" >Back</button>
+            <label for="timeRange">Time Span</label>
             <select id="timeRange" onchange="getSolar()">
                 <option value=604800000>1 Week</option>
                 <option value=259200000>3 Days</option>
