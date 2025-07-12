@@ -24,10 +24,10 @@
     	function openReport(reportXMLFileName)
     	{
 	    	var today = new Date();
-			var dd = today.getDate();
-			var mm = today.getMonth()+1; //January is 0!
-			var yyyy = today.getFullYear();
-			var endHR = today.getHours() + 1;
+			var dd = today.getUTCDate();
+			var mm = today.getUTCMonth()+1; //January is 0!
+			var yyyy = today.getUTCFullYear();
+			var endHR = today.getUTCHours() + 1;
 			var startHR = endHR - 6;
 			var startMin = ":00:00";
 			var endMin = ":00:00";

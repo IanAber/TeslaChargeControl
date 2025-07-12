@@ -17,7 +17,7 @@ import (
 *-------------------
 *  0		17		11	Fan
 *  1		18		12	PWM output for Solar Pump
-*  2		27		13	AC enable
+*  2		27		13	Solar Pump Power
 *  3		22		15	6kW heater element (high)
 *  4		23		16	Pump Enable
 *  22		 6		31	1.5kW heater  element (low)

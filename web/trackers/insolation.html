@@ -23,8 +23,8 @@
 		}
 
         return encodeURI(trackerURL+"?start="
-                        + start.getFullYear() + "-" + (start.getMonth() + 1) + "-" + start.getDate() + " " + start.getHours() + ":" + start.getMinutes() + ":" + start.getSeconds()
-                        + "&end=" + end.getFullYear() + "-" + (end.getMonth() + 1) + "-" + end.getDate() + " " + end.getHours() + ":" + end.getMinutes() + ":" + end.getSeconds());
+                        + start.getUTCFullYear() + "-" + (start.getUTCMonth() + 1) + "-" + start.getUTCDate() + " " + start.getUTCHours() + ":" + start.getUTCMinutes() + ":" + start.getUTCSeconds()
+                        + "&end=" + end.getUTCFullYear() + "-" + (end.getUTCMonth() + 1) + "-" + end.getUTCDate() + " " + end.getUTCHours() + ":" + end.getUTCMinutes() + ":" + end.getUTCSeconds());
 	}
 
 		function xAxisFormatFunction(value, itemIndex, series, group) {

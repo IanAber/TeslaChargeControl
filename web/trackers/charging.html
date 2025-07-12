@@ -26,8 +26,8 @@
 			$("#startAt").jqxDateTimeInput('setDate', start );
 			$("#endAt").jqxDateTimeInput('setDate', end );
 			url = encodeURI("../realtime/getCurrent?start="
-					+ start.getFullYear() + "-" + (start.getMonth() + 1) + "-" + start.getDate() + " " + start.getHours() + ":" + start.getMinutes()
-					+ "&end=" + end.getFullYear() + "-" + (end.getMonth() + 1) + "-" +  end.getDate() + " " + end.getHours() + ":" + end.getMinutes());
+					+ start.getUTCFullYear() + "-" + (start.getUTCMonth() + 1) + "-" + start.getUTCDate() + " " + start.getUTCHours() + ":" + start.getUTCMinutes()
+					+ "&end=" + end.getUTCFullYear() + "-" + (end.getUTCMonth() + 1) + "-" +  end.getUTCDate() + " " + end.getUTCHours() + ":" + end.getUTCMinutes());
 			return url;
     	}
 

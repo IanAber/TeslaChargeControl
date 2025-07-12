@@ -226,7 +226,8 @@ func connectToDatabase() (*sql.DB, error) {
 		_ = pDB.Close()
 		pDB = nil
 	}
-	var sConnectionString = databaseLogin + ":" + databasePassword + "@tcp(" + databaseServer + ":" + databasePort + ")/" + databaseName
+	// Set the time zone to Local to correctly record times
+	var sConnectionString = databaseLogin + ":" + databasePassword + "@tcp(" + databaseServer + ":" + databasePort + ")/" + databaseName + "?loc=Local"
 
 	log.Println("Connecting to [", sConnectionString, "]")
 	db, err := sql.Open("mysql", sConnectionString)
@@ -543,9 +544,9 @@ func GetTemperatures() {
 		GeneratorIn   int16
 		GeneratorOut  int16
 	}
-	esp1 := NewESPTemperature("http://ESPTEMP1.home")
-	esp2 := NewESPTemperature("http://ESPTEMP2.home")
-	esp3 := NewESPTemperature("http://ESPTEMP3.home")
+	esp1 := NewESPTemperature("http://ESPTEMP1")
+	esp2 := NewESPTemperature("http://ESPTEMP2")
+	esp3 := NewESPTemperature("http://ESPTEMP3")
 	esp1.readTemperatures()
 	esp2.readTemperatures()
 	esp3.readTemperatures()
@@ -649,10 +650,6 @@ func main() {
 	msg := twcMessage.New(port, verbose)
 	t := time.Now()
 
-	// TODO - Remove this
-	// Start the Tesla Keep Alive loop
-	//	go teslaKeepAlive()
-
 	log.Println("********** Tesla Keep Alive started. *********")
 
 	// Start the power management loop
@@ -715,7 +712,7 @@ func main() {
 					//					msg.Print()
 					//					log.Print(msg.GetDetails())
 					switch msg.GetCode() {
-					//						case 0xfbe0 : fmt.Printf("To Slave %04x | Status = %02x | SetPoint = %0.2f | = %0.2f\n", msg.GetToAddress(), msg.GetStatus(), float32(msg.GetSetPoint()) / 100, float32(msg.GetCurrent()) / 100)
+					//						case 0xfbe0: fmt.Printf("To Slave %04x | Status = %02x | SetPoint = %0.2f | = %0.2f\n", msg.GetToAddress(), msg.GetStatus(), float32(msg.GetSetPoint()) / 100, float32(msg.GetCurrent()) / 100)
 					case 0xfde0:
 						logData(msg, &slaves)
 					case 0xfde2:

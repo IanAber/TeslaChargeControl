@@ -8,19 +8,59 @@
     <script type="text/javascript" src="../jqwidgets/jqxchart.core.js"></script>
     <script type="text/javascript" src="../jqwidgets/jqxdraw.js"></script>
     <script type="text/javascript" src="../jqwidgets/jqxdata.js"></script>
+    <script type="text/javascript" src="../jqwidgets/jqxdatetimeinput.js"></script>
+    <script type="text/javascript" src="../jqwidgets/jqxcalendar.js"></script>
     <script type="text/javascript">
 		var solarTimeOut;
 		var trackerURL = "../realtime/getSolar"
 
-		function buildSolarURL() {
-			end = new Date();
-			start = new Date(end - document.getElementById("timeRange").value)
-			trackerURL = "../realtime/getSolar";
+        function buildURL() {
+            end = new Date();
+            end.setSeconds(0, 0);
+            end = new Date(end.getTime() + 60000); // add 1 minute
+            start = new Date(end - document.getElementById("timeRange").value);
+            return buildURLForTimes(start, end);
+        }
 
-			return encodeURI(trackerURL+"?start="
-							+ start.getFullYear() + "-" + (start.getMonth() + 1) + "-" + start.getDate() + " " + start.getHours() + ":" + start.getMinutes()
-							+ "&end=" + end.getFullYear() + "-" + (end.getMonth() + 1) + "-" + end.getDate() + " " + end.getHours() + ":" + end.getMinutes());
-		}
+        function buildURLCustomTimes() {
+            end = $("#endAt").jqxDateTimeInput('value');
+            start = $("#startAt").jqxDateTimeInput('value');
+            return buildURLForTimes(start, end);
+        }
+
+        function buildURLFocusTimes() {
+            start = range.from;
+            end = range.to;
+            return buildURLForTimes(start, end);
+        }
+
+        function buildURLDoubleFocusTimes() {
+            start = new Date();
+            end = new Date();
+            let from = range.from.getTime();
+            let to = range.to.getTime();
+            start.setTime(from - (to - from));
+            end.setTime(to + (to - from));
+            return buildURLForTimes(start, end);
+        }
+
+        function buildURLForTimes(start, end) {
+            $("#startAt").jqxDateTimeInput('setDate', start );
+            $("#endAt").jqxDateTimeInput('setDate', end );
+            url = encodeURI("/realtime/getSolar?start="
+                + start.getUTCFullYear() + "-" + (start.getUTCMonth() + 1) + "-" + start.getUTCDate() + " " + start.getUTCHours() + ":" + start.getUTCMinutes()
+                + "&end=" + end.getUTCFullYear() + "-" + (end.getUTCMonth() + 1) + "-" +  end.getUTCDate() + " " + end.getUTCHours() + ":" + end.getUTCMinutes());
+            return url;
+        }
+
+        var start = new Date();
+        start.setSeconds(0);
+        start.setMinutes(0);
+        start.setHours(0);
+        var end = new Date(start);
+        end.setHours(23);
+        end.setMinutes(59);
+        end.setSeconds(59);
 
 		function xAxisFormatFunction(value) {
 			var dt = new Date(value * 1000);
@@ -136,21 +176,51 @@
 
 
 			$('#solarChartContainer').jqxChart(solarSettings);
-			solarTimeOut = setInterval(getSolar, 15000);
-			getSolar();
+			solarTimeOut = setInterval(getCurrent, 15000);
+            sa = $("#startAt");
+            ea = $("#endAt")
+            sa.jqxDateTimeInput({ theme: "arctic", formatString: "F", showTimeButton: true, width: '300px', height: '25px' });
+            sa.jqxDateTimeInput({ dropDownVerticalAlignment: 'top'});
+            sa.css("float", "left");
+            ea.jqxDateTimeInput({ theme: "arctic", formatString: "F", showTimeButton: true, width: '300px', height: '25px' });
+            ea.jqxDateTimeInput({ dropDownVerticalAlignment: 'top'});
+            ea.css("float", "left");
+			getCurrent();
 		});
-								
-		function getSolar() {
-			fetch(buildSolarURL())
+
+        function getCurrent() {
+            let TimeRange = $("#timeRange");
+            let tr = parseInt(TimeRange.val());
+            if (tr === 0)  {
+                $("#customDateTimes").show();
+                $("#waiting").show();
+                refresh(buildURLCustomTimes());
+            } else if (tr === 1) {
+                $("#customDateTimes").show();
+                $("#waiting").show();
+                refresh(buildURLFocusTimes());
+                TimeRange.val(0);
+            } else if (tr === 2) {
+                $("#customDateTimes").show();
+                $("#waiting").show();
+                refresh(buildURLDoubleFocusTimes());
+                TimeRange.val(0);
+            } else {
+                $("#customDateTimes").hide();
+                $("#waiting").show();
+                refresh(buildURL());
+            }
+        }
+
+        function refresh(url) {
+			fetch(url)
 				.then( function(response) {
 					if (response.status === 200) {
 						response.json()
 							.then(function(data) {
-
-                            	let now = new Date();
-                            	let end = Math.trunc(now.getTime() / 1000);
-                            	let start = end - document.getElementById("timeRange").value / 1000
-                                let interval = Math.round((end - start) / 25);
+                                let end = Math.trunc($("#endAt").jqxDateTimeInput('value') / 1000);
+                                let start = ($("#startAt").jqxDateTimeInput('value') / 1000)
+                                let interval = Math.round((end - start) / 50);
 								switch (document.getElementById("param").value) {
 									case "current" : _description = "Current in Amps";
 													_maxValue = "10";
@@ -267,6 +337,7 @@
                             	chart.jqxChart('update');
                         });
                     }
+                    $("#waiting").hide();
                 })
 				.catch(function(err) {
 					if(err.name === "TypeError" && err.message !== "cancelled") {
@@ -288,27 +359,44 @@
     <body style="background:white;">
         <div id='solarChartContainer' style="width:100%; height: 96%" ></div>
 		<div style="text-align:center; width:100%; height: 4%">
-            <label for="param">Parameter</label>
-			<select id="param" onchange="getSolar()">
-				<option value="power" selected="selected">Power (W)</option>
-				<option value="current">Current (A)</option>
-				<option value="volts">Voltage (V)</option>
-			</select>
-            <button onClick="goBack()" style="width:50%;height:100%" >Back</button>
-            <label for="timeRange">Time Span</label>
-            <select id="timeRange" onchange="getSolar()">
-                <option value=604800000>1 Week</option>
-                <option value=259200000>3 Days</option>
-                <option value=172800000>2 Days</option>
-                <option value=86400000>24 Hours</option>
-                <option value=43200000>12 Hours</option>
-                <option value=28800000>8 Hours</option>
-                <option value=14400000>4 Hours</option>
-                <option value=7200000 selected="selected">2 Hours</option>
-                <option value=3600000>1 Hour</option>
-                <option value=1800000>30 Minutes</option>
-                <option value=900000>15 Minutes</option>
-            </select>
+            <div style="float:left;height:100%">
+                <button onClick="goBack()" style="width:100%">Back</button>&nbsp;
+            </div>
+            <div style="float:left">
+                <label for="param">Parameter</label>
+                <select id="param" onchange="getCurrent()">
+                    <option value="power" selected="selected">Power (W)</option>
+                    <option value="current">Current (A)</option>
+                    <option value="volts">Voltage (V)</option>
+                </select>
+            </div>
+            <div style="float:left">
+                <label for="timeRange">Time Span</label>
+                <select id="timeRange" onchange="getCurrent()">
+                    <option value=1>Focus on selection</option>
+                    <option value=2>Double selection</option>
+                    <option value=604800000>1 Week</option>
+                    <option value=259200000>3 Days</option>
+                    <option value=172800000>2 Days</option>
+                    <option value=86400000>24 Hours</option>
+                    <option value=43200000>12 Hours</option>
+                    <option value=28800000>8 Hours</option>
+                    <option value=14400000>4 Hours</option>
+                    <option value=7200000 selected="selected">2 Hours</option>
+                    <option value=3600000>1 Hour</option>
+                    <option value=1800000>30 Minutes</option>
+                    <option value=900000>15 Minutes</option>
+                    <option value=0>Custom</option>
+                </select>
+            </div>
+            <div id="customDateTimes" style="float:left">
+                <span style="float:left;font-size:larger">Start At:&nbsp;</span>
+                <div id="startAt"></div>
+                <span style="float:left;font-size:larger">&nbsp;End At:&nbsp;</span>
+                <div id="endAt"></div>&nbsp;
+                <button onClick="refresh(buildURLCustomTimes())" style="height:100%; width:100px" >Update</button>
+            </div>
+            <div id="waiting" style="float:left; visibility:visible; padding-left: 10px;"><span>Fetching Data please stand by...</span></div>
         </div>
     </body>
 </html>

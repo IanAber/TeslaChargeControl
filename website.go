@@ -392,23 +392,29 @@ func (nfs neuteredFileSystem) Open(path string) (http.File, error) {
 func getWaterTemps(w http.ResponseWriter, _ *http.Request) {
 	// Get the hot tank temperature
 	var temps struct {
-		Hot  float32 `json:"hot"`
-		Cold float32 `json:"cold"`
+		Hot          float32 `json:"hot"`
+		Cold         float32 `json:"cold"`
+		Dehumidifier float32 `json:"dehumidifier"`
+		MatsInput    float32 `json:"matsInput"`
+		MatsOutput   float32 `json:"matsOutput"`
 	}
 	var err = pDB.QueryRow(`SELECT (HotTankTop + HotTankBottom + HotTankMiddle) / 30 AS hotTemp,
-										(BufferTankTop + BufferTankMiddle + BufferTankBottom) / 30 As coldTemp
+										(BufferTankTop + BufferTankMiddle + BufferTankBottom) / 30 As coldTemp,
+										DehumidifierOutput / 10 as dehumidifierOutput,
+										MatsInput / 10 as matsInput,
+										MatsOutput/ 10 as matsOutput 
 									FROM temperatures
 									WHERE Logged > date_add(now(), INTERVAL -5 MINUTE)
-									ORDER BY Logged DESC LIMIT 1;`).Scan(&temps.Hot, &temps.Cold)
+									ORDER BY Logged DESC LIMIT 1;`).Scan(&temps.Hot, &temps.Cold, &temps.Dehumidifier, &temps.MatsInput, &temps.MatsOutput)
 	if err != nil {
-		http.Error(w, "Failed to get the hot tank temperatures.", http.StatusInternalServerError)
+		http.Error(w, "Failed to get the temperatures.", http.StatusInternalServerError)
 		log.Printf("Error fetching tank temperatures from the database - %s", err)
 		return
 	}
 	str, err := json.Marshal(temps)
 	if err != nil {
 		http.Error(w, "Failed to marshal the tempratures into a JSON object", http.StatusInternalServerError)
-		log.Printf("Error marshalling tank temperatures - %s", err)
+		log.Printf("Error marshalling temperatures - %s", err)
 		return
 	}
 	_, err = fmt.Fprint(w, string(str))

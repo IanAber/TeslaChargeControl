@@ -72,6 +72,7 @@ type SolarStrings struct {
 }
 
 // GetTimeRange returns the start and end times passed as query parameters.
+
 func GetTimeRange(r *http.Request) (start time.Time, end time.Time, err error) {
 	params := r.URL.Query()
 	values := params["start"]
