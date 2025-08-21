@@ -102,7 +102,7 @@
  		    }
 		}
 		
-		function setRealTimeData(result) {
+		function  setRealTimeData(result) {
 
 			// Handle the electrolyser breaker
 			// breaker = $("#electrolyserSwitch")
@@ -120,26 +120,36 @@
             // }
 
 			if((LastRealTimeData == null) || (LastRealTimeData.inverter.iBatt != result.inverter.iBatt)) {
-		    	a = 0 - result.inverter.iBatt;
-		    	if( a >= 0) {
-					sCaption = a + "A Charging";
-				} else {
-					sCaption = result.inverter.iBatt + "A Discharging";
-				}
-				$("#InverterCurrent").jqxGauge({caption:{value:sCaption}});
-				$("#InverterCurrent").val(0 - result.inverter.iBatt);
+		    	// a = 0 - result.inverter.iBatt;
+		    	// if( a >= 0) {
+				// 	sCaption = a + "A Charging";
+				// } else {
+				// 	sCaption = result.inverter.iBatt + "A Discharging";
+				// }
+				// $("#InverterCurrent").jqxGauge({caption:{value:sCaption}});
+				// $("#InverterCurrent").val(0 - result.inverter.iBatt);
+                if( result.inverter.bmsIBat >= 0) {
+                	sCaption = result.inverter.bmsIBat + "A Charging";
+                } else {
+                	sCaption = (0 - result.inverter.bmsIBat) + "A Discharging";
+                }
+                $("#InverterCurrent").jqxGauge({caption:{value:sCaption}});
+                $("#InverterCurrent").val(result.inverter.bmsIBat);
 		    }
 			if((LastRealTimeData == null) || (LastRealTimeData.inverter.vBatt != result.inverter.vBatt) || (LastRealTimeData.inverter.vSetpoint != result.inverter.vSetpoint)) {
 				$("#InverterVolts").val([result.inverter.vSetpoint, result.inverter.vBatt]);
 		    }
-			if((LastRealTimeData == null) || (LastRealTimeData.inverter.iBatt != result.inverter.iBatt) || (LastRealTimeData.inverter.vBatt != result.inverter.vBatt)) {
-				battPower = (result.inverter.iBatt * result.inverter.vBatt) / 1000
-				if(battPower > 0) {
-					battPowerText = battPower.toFixed(3) + " kW Discharging";
-					battPowerColour = 'red';
+			if((LastRealTimeData == null) || (LastRealTimeData.inverter.bmsIBat != result.inverter.bmsIBat) || (LastRealTimeData.inverter.vBatt != result.inverter.vBatt)) {
+				battPower = (result.inverter.bmsIBat * result.inverter.vBatt) / 1000
+                ctrl = $("#battPowerText")
+				if(battPower < 0) {
+					ctrl.text(0 - battPower.toFixed(3) + " kW Discharging");
+                    ctrl.addClass("discharging");
+                    ctrl.removeClass("charging");
 				} else {
-					battPowerText = (0 - battPower).toFixed(3) + " kW Charging";
-					battPowerColour = 'green';
+					ctrl.text(battPower.toFixed(3) + " kW Charging");
+                    ctrl.removeClass("discharging");
+                    ctrl.addClass("charging");
 				}
 //				$("#InverterVolts").jqxBarGauge({title:{subtitle:{text:battPowerText,font:{color:battPowerColour}}}});
 			}
@@ -194,8 +204,44 @@
 			if((LastRealTimeData == null) || (LastRealTimeData.inverter.frequency != result.inverter.frequency)) {
 				$("#InverterFrequency").val(result.inverter.frequency);
 			}
+
+            $("#socVal").text(result.inverter.bmsSOC + "%");
+            $("#sohVal").text(result.inverter.bmsSOH + "%");
+            $("#vbatVal").text(result.inverter.bmsVBat + "V");
+            let ibatVal = $("#ibatVal")
+            ibatVal.text(result.inverter.bmsIBat + "A");
+            if (result.inverter.bmsIBat >= 0) {
+                ibatVal.addClass("charging");
+                ibatVal.removeClass("discharging");
+            } else {
+                ibatVal.addClass("discharging");
+                ibatVal.removeClass("charging");
+            }
+            let siIbatVal = $("#siIbatVal");
+            siIbatVal.text((0 - result.inverter.iBatt) + "A");
+            if (result.inverter.iBatt <= 0) {
+                siIbatVal.addClass("charging");
+                siIbatVal.removeClass("discharging");
+            } else {
+                siIbatVal.addClass("discharging");
+                siIbatVal.removeClass("charging");
+            }
+            let avgIbatVal = $("#avgIbatVal");
+            avgIbatVal.text((result.inverter.iBattAvg) + "A");
+            if (result.inverter.iBattAvg >= 0) {
+                avgIbatVal.addClass("charging");
+                avgIbatVal.removeClass("discharging");
+            } else {
+                avgIbatVal.addClass("discharging");
+                avgIbatVal.removeClass("charging");
+            }
+            $("#tbatVal").text(result.inverter.bmsTBat + "℃");
+            $("#chargeVoltsVal").text(result.inverter.bmsChargeVolts + "V");
+            $("#dischargeVoltsVal").text(result.inverter.bmsDischargeVolts + "V");
+            $("#maxChargeAmpsVal").text(result.inverter.bmsCharCurrentMax + "A");
+            $("#maxDischargeAmpsVal").text(result.inverter.bmsDichargeCurrentMax + "A");
 		};
-				
+
 		function setData(result) {
 			var systime = Date.parse(result.temps.logged.replace(/-/g, "/"));
 
@@ -649,8 +695,8 @@
                 ticksMinor: {interval: 5, size: '5%'},
                 ticksMajor: {interval: 25,size: '9%'},
                 labels: {interval:50},
-                max: 250,
-                min: -250,
+                max: 325,
+                min: -325,
                 value: 0,
                 animationDuration: 500,
                 cap: {size: '5%', style: { fill: '#ff0000', stroke: '#00ff00' }, visible: true},
@@ -808,6 +854,12 @@
 
 	</script>
     <style>
+        span.charging {
+            color: green;
+        }
+        span.discharging {
+            color: red;
+        }
         div.centered {
             text-align: center;
             margin:auto;
@@ -884,6 +936,42 @@
             <div>
                 <button class="BUTTON_JKX" type="button" onClick="reloadPage();">Reload this page</button><br />
                 <a href="/logging">Logging</a>
+            </div>
+            <div>
+                <table id="bmsData">
+                    <thead>
+                        <tr>
+                            <th>BMS Data</th><th>Value</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td title="Cloud Energy Battery State of Charge">SOC</td><td><span id="socVal"></span></td>
+                        </tr><tr>
+                            <td title="Cloud Energy Battery State of Health">SOH</td><td><span id="sohVal"></span></td>
+                        </tr><tr>
+                            <td title="Cloud Energy Battery Voltage">Battery Voltage</td><td><span id="vbatVal"></span></td>
+                        </tr><tr>
+                            <td title="Cloud Energy Battery current">Battery Current</td><td><span id="ibatVal"></span></td>
+                        </tr><tr>
+                            <td title="Cloud Energy Battery Power">Battery Power</td><td><span id="battPowerText"></span></td>
+                        </tr><tr>
+                            <td title="Cloud Energy Battery Temperature">Battery Temperature</td><td><span id="tbatVal"></span></td>
+                        </tr><tr>
+                            <td title="Cloud Energy Battery Maximum Charge Voltage">Charge Volts</td><td><span id="chargeVoltsVal"></span></td>
+                        </tr><tr>
+                            <td title="Cloud Energy Battery Miniumum Discharge Voltage">Discharge Volts</td><td><span id="dischargeVoltsVal"></span></td>
+                        </tr><tr>
+                            <td title="Cloud Energy Battery Maximum Charge Current">Max Charge Amps</td><td><span id="maxChargeAmpsVal"></span></td>
+                        </tr><tr>
+                            <td title="Cloud Energy Battery Maximum Discharge Current">Max Discharge Amps</td><td><span id="maxDischargeAmpsVal"></span></td>
+                        </tr><tr>
+                            <td title="Sunny Island DC current">SI-IBat</td><td><span id="siIbatVal"></span></td>
+                        </tr><tr>
+                            <td title="Avg DC current">Average IBat</td><td><span id="avgIbatVal"></span></td>
+                        </tr>
+                    </tbody>
+                </table>
             </div>
         </div>
       </div>

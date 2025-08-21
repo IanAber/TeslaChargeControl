@@ -52,10 +52,19 @@ type InverterValues struct {
 	vBattDelta float32
 	qf         quinticFunction.QuinticFunction
 
-	iBattValues       [600]float32
+	iBattValues       [60]float32
 	iBattValuePointer int
 
-	mu sync.Mutex
+	bmsVBat               float64
+	bmsIBat               float64
+	bmsTBat               float64
+	bmsChargeVolts        float64
+	bmsDischargeVolts     float64
+	bmsChargeCurrentMax   float64
+	bmsDichargeCurrentMax float64
+	bmsSOC                uint16
+	bmsSOH                uint16
+	mu                    sync.Mutex
 
 	Log bool
 }
@@ -198,7 +207,24 @@ func (i *InverterValues) SetAmps(amps float32) {
 	i.mu.Lock()
 	defer i.mu.Unlock()
 	i.amps = amps
-	i.iBattValues[i.iBattValuePointer] = amps
+	//i.iBattValues[i.iBattValuePointer] = amps
+	//i.iBattValuePointer++
+	//if i.iBattValuePointer >= len(i.iBattValues) {
+	//	i.iBattValuePointer = 0
+	//}
+}
+
+func (i *InverterValues) SetBmsVolts(volts float64) {
+	i.mu.Lock()
+	defer i.mu.Unlock()
+	i.bmsVBat = volts
+}
+
+func (i *InverterValues) SetBmsAmps(amps float64) {
+	i.mu.Lock()
+	defer i.mu.Unlock()
+	i.bmsIBat = amps
+	i.iBattValues[i.iBattValuePointer] = float32(amps)
 	i.iBattValuePointer++
 	if i.iBattValuePointer >= len(i.iBattValues) {
 		i.iBattValuePointer = 0

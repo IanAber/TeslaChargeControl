@@ -530,12 +530,26 @@ func getValues(w http.ResponseWriter, _ *http.Request) {
 		"iBattAvg":%0.2f,
 		"vBattDeltaMin":%0.2f,
 		"vBattDeltaMax":%0.2f,
+		"bmsVBat":%0.2f,
+		"bmsIBat":%0.2f,
+		"bmsTBat":%0.2f,
+		"bmsChargeVolts":%0.2f,
+		"bmsDischargeVolts":%0.2f,
+		"bmsCharCurrentMax":%0.2f,
+		"bmsDichargeCurrentMax":%0.2f,
+		"bmsSOC":%d,
+		"bmsSOH":%d,
 %s
 	}
 }`, iValues.GetFrequency(), iValues.GetSetPoint(),
 		iValues.GetVolts(), iValues.GetAmps(), iValues.GetSOC(),
 		iValues.GetAvgAmps(),
-		iValues.GetVBattDeltaMin(), iValues.GetVBattDeltaMax(), iValues.GetFlags())
+		iValues.GetVBattDeltaMin(), iValues.GetVBattDeltaMax(),
+		iValues.bmsVBat, iValues.bmsIBat, iValues.bmsTBat,
+		iValues.bmsChargeVolts, iValues.bmsDischargeVolts,
+		iValues.bmsChargeCurrentMax, iValues.bmsDichargeCurrentMax,
+		iValues.bmsSOC, iValues.bmsSOH,
+		iValues.GetFlags())
 }
 
 func mailForm(w http.ResponseWriter, r *http.Request) {

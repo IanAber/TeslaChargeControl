@@ -202,6 +202,22 @@ func handleCANFrame(frm can.Frame) {
 		iValues.Current = c307.Current()
 		iValues.FeedSelfC = c307.FeedSelfC()
 		iValues.Esave = c307.Esave()
+	case 0x351:
+		c351 := NewBMS351(frm.Data[0:])
+		iValues.bmsChargeVolts = c351.ChargeVolts()
+		iValues.bmsDischargeVolts = c351.DischargeVoltage()
+		iValues.bmsChargeCurrentMax = c351.ChargeCurrentLimit()
+		iValues.bmsDichargeCurrentMax = c351.DischargeCurrentLimit()
+	case 0x355:
+		c355 := NewBMS355(frm.Data[0:])
+		iValues.bmsSOC = c355.SOC()
+		iValues.bmsSOH = c355.SOH()
+	case 0x356:
+		c356 := NewBMS356(frm.Data[0:])
+		iValues.SetBmsVolts(c356.VBatt())
+		iValues.SetBmsAmps(c356.IBatt())
+		iValues.bmsTBat = c356.TBatt()
+		//		log.Printf("%fV : %fA : %fT", c356.VBatt(), c356.IBatt(), c356.TBatt())
 	}
 }
 
@@ -424,7 +440,7 @@ func logToDatabase() {
 	lastFrequency := iValues.GetFrequency()
 	lastVsetpoint := iValues.GetSetPoint()
 	lastVbatt := iValues.GetVolts()
-	lastIbatt := iValues.GetAmps()
+	//	lastIbatt := iValues.GetAmps()
 	lastSoc := iValues.GetSOC()
 	lastIavailable := TeslaParameters.GetMaxAmps()
 	lastIused := TeslaParameters.GetCurrent()
@@ -434,13 +450,34 @@ func logToDatabase() {
 	lastSolarPump := uint8(255)
 	var err error
 	hotTankTemp := int16(1000)
+	lastbmsVBat := 0.0
+	lastbmsIBat := 0.0
+	lastbmsTBat := 0.0
+	lastbmsChargeVolts := 0.0
+	lastbmsDischargeVolts := 0.0
+	lastbmsChargeCurrentMax := 0.0
+	lastbmsDischargeCurrentMax := 0.0
+	lastbmsSOC := uint16(0)
+	lastbmsSOH := uint16(0)
 
 	loggingTicker := time.NewTicker(time.Second)
 	for range loggingTicker.C {
+		iValues.mu.Lock()
+		newbmsVBat := iValues.bmsVBat
+		newbmsIBat := iValues.bmsIBat
+		newbmsTBat := iValues.bmsTBat
+		newbmsChargeVolts := iValues.bmsChargeVolts
+		newbmsDischargeVolts := iValues.bmsDischargeVolts
+		newbmsChargeCurrentMax := iValues.bmsChargeCurrentMax
+		newbmsDischargeCurrentMax := iValues.bmsDichargeCurrentMax
+		newbmsSOC := iValues.bmsSOC
+		newbmsSOH := iValues.bmsSOH
+		iValues.mu.Unlock()
+
 		newFrequency := iValues.GetFrequency()
 		newVsetpoint := iValues.GetSetPoint()
 		newVbatt := iValues.GetVolts()
-		newIbatt := iValues.GetAmps()
+		//		newIbatt := iValues.GetAmps()
 		newSoc := iValues.GetSOC()
 		newIavailable := TeslaParameters.GetMaxAmps()
 		newIused := TeslaParameters.GetCurrent()
@@ -457,6 +494,23 @@ func logToDatabase() {
 			}
 		}
 
+		if lastbmsChargeCurrentMax != newbmsChargeCurrentMax || lastbmsChargeVolts != newbmsChargeVolts || lastbmsDischargeCurrentMax != newbmsDischargeCurrentMax ||
+			lastbmsDischargeVolts != newbmsDischargeVolts || lastbmsIBat != newbmsIBat || lastbmsSOC != newbmsSOC || lastbmsSOH != newbmsSOH ||
+			lastbmsVBat != newbmsVBat || lastbmsTBat != newbmsTBat {
+			if _, err := pDB.Exec("INSERT INTO logging.bms_values (vbat, ibat, tbat, chargeVolts, dischargeVolts, chargeAmpsMax, dischargeAmpsMax, soc, soh) VALUES(?,?,?,?,?,?,?,?,?)", newbmsVBat, newbmsIBat, newbmsTBat, newbmsChargeVolts, newbmsDischargeVolts, newbmsChargeCurrentMax, newbmsDischargeCurrentMax,
+				newbmsSOC, newbmsSOH); err != nil {
+				log.Println(err)
+			}
+			lastbmsChargeCurrentMax = newbmsChargeCurrentMax
+			lastbmsChargeVolts = newbmsChargeVolts
+			lastbmsDischargeCurrentMax = newbmsDischargeCurrentMax
+			lastbmsDischargeVolts = newbmsDischargeVolts
+			//lastbmsIBat = newbmsIBat
+			lastbmsSOC = newbmsSOC
+			lastbmsSOH = newbmsSOH
+			lastbmsVBat = newbmsVBat
+			lastbmsTBat = newbmsTBat
+		}
 		if lastSolarPump != newSolarPump {
 			// Log the new solar pump value if we changed it
 			if _, err := pDB.Exec("INSERT INTO solar_pump (pump_power) values(?)", newSolarPump); err != nil {
@@ -464,14 +518,15 @@ func logToDatabase() {
 			}
 		}
 		lastSolarPump = newSolarPump
-		if (newFrequency != lastFrequency) || (newVsetpoint != lastVsetpoint) || (newVbatt != lastVbatt) || (newIbatt != lastIbatt) || (newSoc != lastSoc) {
+		if (newFrequency != lastFrequency) || (newVsetpoint != lastVsetpoint) || (newVbatt != lastVbatt) || (newbmsIBat != lastbmsIBat) || (newSoc != lastSoc) {
 			lastFrequency = newFrequency
 			lastVsetpoint = newVsetpoint
 			lastVbatt = newVbatt
-			lastIbatt = newIbatt
+			//			lastIbatt = newIbatt
+			lastbmsIBat = newbmsIBat
 			lastSoc = newSoc
 			var _, err = pDB.Exec("insert into inverter_values (frequency, vSetpoint, vBatt, iBatt, state_of_charge) values (?, ?, ?, ?, ?)",
-				newFrequency, newVsetpoint, newVbatt, newIbatt, newSoc)
+				newFrequency, newVsetpoint, newVbatt, newbmsIBat, newSoc)
 			if err != nil {
 				log.Printf("Error writing inverter values to the database - %s", err)
 				_ = pDB.Close()
