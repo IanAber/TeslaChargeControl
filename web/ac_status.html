@@ -695,8 +695,8 @@
                 ticksMinor: {interval: 5, size: '5%'},
                 ticksMajor: {interval: 25,size: '9%'},
                 labels: {interval:50},
-                max: 325,
-                min: -325,
+                max: 350,
+                min: -350,
                 value: 0,
                 animationDuration: 500,
                 cap: {size: '5%', style: { fill: '#ff0000', stroke: '#00ff00' }, visible: true},
@@ -707,15 +707,15 @@
                 height: controlsHeight,
                 background: { borderRadius: 5 },
                 orientation: 'vertical',
-                ticksMinor: {interval: 5, size: '15%'},
-                ticksMajor: {interval: 10,size: '25%'},
-                ticksOffset: ['15%', '2%'],
+                ticksMinor: {interval: 5, size: '5%'},
+                ticksMajor: {interval: 10, size: '10%'},
+                ticksOffset: ['50%', '2%'],
                 ticksPosition: 'far',
-                pointer: {size: '40%', style:{fill: 'green'}, offset:'-30%'},
+                pointer: {size: '25%', style:{fill: 'green'}, offset:'-30%'},
                 scaleLength: '90%',
                 max: 100,
                 min: 0,
-                labels: {interval: 20, offset: '-25%', position: 'far', formatValue: function(value){return value + "%";}},
+                labels: {interval: 10, offset: '-5%', position: 'far', formatValue: function(value){return value + "%";}},
                 value: 75,
                 animationDuration: 0,
                 ranges: [
@@ -723,7 +723,7 @@
                     { startValue: 35, endValue: 70, style: { fill: '#FFA200', stroke: '#FFA200'}},
                     { startValue: 70, endValue: 100, style: {fill: '#00FF00', stroke: '#00FF00'}}
                 ],
-                rangesOffset: '-30%'
+                rangesOffset: '0%'
             });
             $('#InverterFrequency').jqxLinearGauge({
                 width: controlsWidth,
