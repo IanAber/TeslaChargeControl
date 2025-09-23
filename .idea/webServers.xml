@@ -5,7 +5,7 @@
       <webServer id="e63dbdef-0b8e-4591-9ba1-17f1625ee85d" name="aberhome1" url="http://cloud.cedartechnology.com:40022">
         <fileTransfer rootFolder="/home/pi" accessType="SFTP" host="cloud.cedartechnology.com" port="40022" sshConfigId="58426fb4-d2fd-4317-892f-5626a207ccd5" sshConfig="AberHome">
           <advancedOptions>
-            <advancedOptions dataProtectionLevel="Private" passiveMode="true" shareSSLContext="true" />
+            <advancedOptions dataProtectionLevel="Private" passiveMode="true" shareSSLContext="true" isUseRsync="true" />
           </advancedOptions>
         </fileTransfer>
       </webServer>

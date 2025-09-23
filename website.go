@@ -4,12 +4,13 @@ import (
 	"SystemController/quinticFunction"
 	"encoding/json"
 	"fmt"
-	"github.com/gorilla/mux"
 	"log"
 	"net/http"
 	"path/filepath"
 	"strconv"
 	"time"
+
+	"github.com/gorilla/mux"
 )
 
 func setUpWebSite() {
@@ -535,7 +536,7 @@ func getValues(w http.ResponseWriter, _ *http.Request) {
 		"bmsTBat":%0.2f,
 		"bmsChargeVolts":%0.2f,
 		"bmsDischargeVolts":%0.2f,
-		"bmsCharCurrentMax":%0.2f,
+		"bmsChargeCurrentMax":%0.2f,
 		"bmsDichargeCurrentMax":%0.2f,
 		"bmsSOC":%d,
 		"bmsSOH":%d,

@@ -238,7 +238,7 @@
             $("#tbatVal").text(result.inverter.bmsTBat + "℃");
             $("#chargeVoltsVal").text(result.inverter.bmsChargeVolts + "V");
             $("#dischargeVoltsVal").text(result.inverter.bmsDischargeVolts + "V");
-            $("#maxChargeAmpsVal").text(result.inverter.bmsCharCurrentMax + "A");
+            $("#maxChargeAmpsVal").text(result.inverter.bmsChargeCurrentMax + "A");
             $("#maxDischargeAmpsVal").text(result.inverter.bmsDichargeCurrentMax + "A");
 		};
 
@@ -362,7 +362,7 @@
                 height: controlsHeight - $("#GeneratorStatus").height(),
                 values: [100, 200, 300, 400, 500, 600, 700, 800, 900, 1000, 1100],
                 min: 0,
-                max: 3000,
+                max: 3400,
                 startAngle: 265,
                 endAngle: 275,
                 animationDuration: 500,
@@ -698,7 +698,7 @@
                 max: 350,
                 min: -350,
                 value: 0,
-                animationDuration: 500,
+                animationDuration: 1000,
                 cap: {size: '5%', style: { fill: '#ff0000', stroke: '#00ff00' }, visible: true},
                 caption: {value: 'Battery Current', position: 'bottom', offset: [0, 10], visible: true},
             });

@@ -87,6 +87,13 @@ func (i *InverterValues) GetAmps() float32 {
 	return i.amps
 }
 
+// GetBatAmps returns the current as reported by the battery
+func (i *InverterValues) GetBatAmps() float64 {
+	i.mu.Lock()
+	defer i.mu.Unlock()
+	return i.bmsIBat
+}
+
 // GetAvgAmps returns the average battery current over the past 300 readings
 func (i *InverterValues) GetAvgAmps() float32 {
 	i.mu.Lock()
@@ -246,38 +253,65 @@ func (i *InverterValues) GetQuinticFunction() quinticFunction.QuinticFunction {
 // Return -1 if we need more power to charge
 // Return 0 if we are inside the band of acceptable Delta V
 // Return +1 if we can take more power for something else
+//
+//	func (i *InverterValues) GetChargeLevel() int {
+//		i.vBattMax, i.vBattMin = i.qf.Eval(i.soc)
+//		i.vBattDelta = i.vsetpoint - i.volts
+//		switch {
+//		case (i.frequency > 60.5) && (i.amps < 0):
+//			if i.Log {
+//				log.Printf("(i.frequency(%f) > 60.5Hz) && (i.amps(%f) < 0) - Raise consumption\n", i.frequency, i.amps)
+//			}
+//			return 1 // Inverters are throttled and battery is charging
+//		case (i.soc > 98 && i.amps < 100):
+//			if i.Log {
+//				log.Printf("i.soc > 98%%(%f%%) && i.amps < 100A(%fA) discharge. Raise consumption\n", i.soc, i.amps)
+//			}
+//			return 1
+//		case (i.frequency <= 60.1) && (i.amps > 0):
+//			if i.Log {
+//				log.Printf("(i.frequency(%f) < 59.5Hz) && (i.amps(%f) > 0) - Lower consumption\n", i.frequency, i.amps)
+//			}
+//			return -1 // Inverters are all running and battery is discharging
+//		case (i.vBattDelta > i.vBattMax) && (i.frequency < 61) && (i.amps > -60):
+//			if i.Log {
+//				log.Printf("(i.vBattDelta(%f) > i.vBattMax(%f)) && (i.frequency(%f) < 60.25) - Lower consumption\n", i.vBattDelta, i.vBattMax, i.frequency)
+//			}
+//			return -1 // Battery voltage is below the acceptable setpoint and the inverters
+//			// are not throttled and charge current is less than 60Amps
+//		case (i.vBattDelta < i.vBattMin) || (i.amps < -80):
+//			if i.Log {
+//				log.Printf("(i.vBattDelta(%f) < i.vBattMin(%f)) || i.amps(%f) < -80 - Raise consumption\n", i.vBattDelta, i.vBattMin, i.amps)
+//			}
+//			return 1 // Battery voltage is above the acceptable setpoint, or we are charging at more than 80 amps
+//		default:
+//			return 0
+//		}
+//	}
 func (i *InverterValues) GetChargeLevel() int {
-	i.vBattMax, i.vBattMin = i.qf.Eval(i.soc)
-	i.vBattDelta = i.vsetpoint - i.volts
-	switch {
-	case (i.frequency > 60.5) && (i.amps < 0):
-		if i.Log {
-			log.Printf("(i.frequency(%f) > 60.5Hz) && (i.amps(%f) < 0) - Raise consumption\n", i.frequency, i.amps)
-		}
-		return 1 // Inverters are throttled and battery is charging
-	case (i.soc > 98 && i.amps < 100):
-		if i.Log {
-			log.Printf("i.soc > 98%%(%f%%) && i.amps < 100A(%fA) discharge. Raise consumption\n", i.soc, i.amps)
-		}
+	i.mu.Lock()
+	defer i.mu.Unlock()
+
+	log.Printf("SOC = %f | Amps = %f", i.soc, i.bmsIBat)
+	if i.soc > 95 {
 		return 1
-	case (i.frequency <= 60.1) && (i.amps > 0):
-		if i.Log {
-			log.Printf("(i.frequency(%f) < 59.5Hz) && (i.amps(%f) > 0) - Lower consumption\n", i.frequency, i.amps)
+	}
+	if i.soc < 30 { // Never increase if SOC < 30%
+		if i.bmsIBat < 50 { // Decrease if charging < 50A
+			return -1
+		} else {
+			return 0
 		}
-		return -1 // Inverters are all running and battery is discharging
-	case (i.vBattDelta > i.vBattMax) && (i.frequency < 61) && (i.amps > -60):
-		if i.Log {
-			log.Printf("(i.vBattDelta(%f) > i.vBattMax(%f)) && (i.frequency(%f) < 60.25) - Lower consumption\n", i.vBattDelta, i.vBattMax, i.frequency)
+	} else {
+		if i.bmsIBat > 30 { // OK to start charging if charging is above 30A
+			return 1
+		} else {
+			if i.bmsIBat < 0 { // Reduce charging if current drops to discharge otherwise leave it alone
+				return -1
+			} else {
+				return 0
+			}
 		}
-		return -1 // Battery voltage is below the acceptable setpoint and the inverters
-		// are not throttled and charge current is less than 60Amps
-	case (i.vBattDelta < i.vBattMin) || (i.amps < -80):
-		if i.Log {
-			log.Printf("(i.vBattDelta(%f) < i.vBattMin(%f)) || i.amps(%f) < -80 - Raise consumption\n", i.vBattDelta, i.vBattMin, i.amps)
-		}
-		return 1 // Battery voltage is above the acceptable setpoint, or we are charging at more than 80 amps
-	default:
-		return 0
 	}
 }
 
