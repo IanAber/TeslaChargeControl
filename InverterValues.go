@@ -64,13 +64,28 @@ type InverterValues struct {
 	bmsDichargeCurrentMax float64
 	bmsSOC                uint16
 	bmsSOH                uint16
-	mu                    sync.Mutex
+
+	inverterPower float32
+	mu            sync.Mutex
 
 	Log bool
 }
 
 func (i *InverterValues) LoadFunctionConstants(filename string) error {
 	return i.qf.LoadConstants(filename)
+}
+
+// GetPower returns the total inverter power
+func (i *InverterValues) GetPower() float32 {
+	i.mu.Lock()
+	defer i.mu.Unlock()
+	return i.inverterPower
+}
+
+func (i *InverterValues) SetPower(power float32) {
+	i.mu.Lock()
+	defer i.mu.Unlock()
+	i.inverterPower = power
 }
 
 // GetVolts returns the battery voltage

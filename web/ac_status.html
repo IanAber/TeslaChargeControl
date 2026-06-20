@@ -119,6 +119,9 @@
 			// 	breaker.attr("src", "images/breaker_off.png");
             // }
 
+            if((LastRealTimeData == null) || (LastRealTimeData.inverter.power) != result.inverter.power) {
+                $("#InverterPower").val(result.inverter.power);
+            }
 			if((LastRealTimeData == null) || (LastRealTimeData.inverter.iBatt != result.inverter.iBatt)) {
 		    	// a = 0 - result.inverter.iBatt;
 		    	// if( a >= 0) {
@@ -256,9 +259,6 @@
 			}
 		    if((LastData == null) || (LastData.temps.CondenserIn != result.temps.CondenserIn) || (LastData.temps.CondenserOut != result.temps.CondenserOut)) {
 				$("#CondenserLoop").val([result.temps.CondenserIn / 10, result.temps.CondenserOut / 10]);
-		    }
-		    if((LastData == null) || (LastData.temps.GeneratorIn != result.temps.GeneratorIn) || (LastData.temps.GeneratorOut != result.temps.GeneratorOut)) {
-				$("#GeneratorLoop").val([result.temps.GeneratorIn / 10, result.temps.GeneratorOut / 10]);
 		    }
 		    if((LastData == null) || (LastData.temps.EvaporatorIn != result.temps.EvaporatorIn) || (LastData.temps.EvaporatorOut != result.temps.EvaporatorOut)) {
 				$("#EvaporatorLoop").val([result.temps.EvaporatorIn / 10, result.temps.EvaporatorOut / 10]);
@@ -495,36 +495,28 @@
                         };
                     }}
             });
-            $('#GeneratorLoop').jqxBarGauge({
-            width: controlsWidth,
-            height: controlsHeight,
-            values: [0.0, 0.0],
-            min: 40,
-            max: 100,
-            animationDuration: 500,
-            startAngle: 265,
-            endAngle: 275,
-            title:	{
-                        text: 'Generator Circuit',
-                        font: { size: 12, color: 'black', weight: 'bold', family:"Segoi-UI"},
-                        margin: { top: 0, bottom: 0, left: 0, right: 0},
-                        verticalAlignment: 'bottom'
-                    },
-            labels: {
-                        font: {size: 8,},
-                        precision: 1,
-                    },
-            colorScheme: 'customColors',
-            customColorScheme: { name: 'customColors', colors: ['red', 'blue'] },
-            tooltip: {visible: true,
-                      precision: 1,
-                      formatFunction: function (value, index){
-                                            if(index === 0)
-                                                return("In = " + value + '&#8451;');
-                                            else
-                                                return ("Out = " + value + '&#8451;');
-                                        }}
+
+            $('#InverterPower').jqxGauge({
+                height: gaugeDiameter - 5,
+                width: gaugeDiameter - 5,
+                radius: gaugeRadius - 5,
+                ranges: [
+                    {startValue: -14, endValue: -8, style: {fill: 'RED', stroke: 'RED'}, startWidth: 9, endWidth: 6},
+                    {startValue: -8, endValue: 0, style: {fill: 'GREEN', stroke: 'GREEN'}, startWidth: 6, endWidth: 3},
+                    {startValue: 0, endValue: 8, style: {fill: 'GREEN', stroke: 'GREEN'}, startWidth: 3, endWidth: 6},
+                    {startValue: 8, endValue: 14, style: {fill: 'RED', stroke: 'RED'}, startWidth: 6, endWidth: 9}
+                ],
+                ticksMinor: {interval: 0.5, size: '5%'},
+                ticksMajor: {interval: 1,size: '9%'},
+                labels: {interval:4},
+                max: 16,
+                min: -16,
+                value: 0,
+                animationDuration: 1000,
+                cap: {size: '5%', style: { fill: '#ff0000', stroke: '#00ff00' }, visible: true},
+                caption: {value: 'Inverter Power (KW)', position: 'bottom', offset: [0, 10], visible: true},
             });
+
             $('#EvaporatorLoop').jqxBarGauge({
                 width: controlsWidth,
                 height: controlsHeight,
@@ -988,8 +980,8 @@
         <div class="centered"  onclick="window.open('trackers/loop_temps.html')">
           <div id='CondenserLoop'></div>
         </div>
-        <div class="centered" onclick="window.open('trackers/loop_temps.html')">
-          <div id='GeneratorLoop'></div>
+        <div class="centered" onclick="window.open('trackers/inverterPower.html')">
+          <div id='InverterPower'></div>
         </div>
       </div>
       <div id='inverterValues' style="display: grid; grid-template-columns: 20% 20% 20% 20% 20%">

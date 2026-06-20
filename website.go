@@ -540,6 +540,7 @@ func getValues(w http.ResponseWriter, _ *http.Request) {
 		"bmsDichargeCurrentMax":%0.2f,
 		"bmsSOC":%d,
 		"bmsSOH":%d,
+		"power":%0.1f,
 %s
 	}
 }`, iValues.GetFrequency(), iValues.GetSetPoint(),
@@ -549,7 +550,7 @@ func getValues(w http.ResponseWriter, _ *http.Request) {
 		iValues.bmsVBat, iValues.bmsIBat, iValues.bmsTBat,
 		iValues.bmsChargeVolts, iValues.bmsDischargeVolts,
 		iValues.bmsChargeCurrentMax, iValues.bmsDichargeCurrentMax,
-		iValues.bmsSOC, iValues.bmsSOH,
+		iValues.bmsSOC, iValues.bmsSOH, iValues.inverterPower,
 		iValues.GetFlags())
 }
 

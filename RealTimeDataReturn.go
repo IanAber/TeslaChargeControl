@@ -3,11 +3,12 @@ package main
 import (
 	"encoding/json"
 	"fmt"
-	"github.com/stianeikeland/go-rpio"
 	"io"
 	"log"
 	"net/http"
 	"time"
+
+	"github.com/stianeikeland/go-rpio"
 )
 
 type PinData struct {
@@ -712,6 +713,7 @@ type CurrentData struct {
 	SOC       float64 `json:"state_of_charge"`
 	Hertz     float64 `json:"frequency"`
 	VSetpoint float64 `json:"setpoint"`
+	Power     float64 `json:"power"`
 }
 
 func getCurrent(w http.ResponseWriter, r *http.Request) {
@@ -721,6 +723,7 @@ func getCurrent(w http.ResponseWriter, r *http.Request) {
 							, state_of_charge AS soc
 							, frequency AS frequency
 							, vSetpoint AS setpoint
+							, ifnull(power,0) AS power
 						 FROM inverter_values
 						WHERE logged BETWEEN ? AND ?
 						ORDER BY logged DESC`
@@ -731,6 +734,7 @@ func getCurrent(w http.ResponseWriter, r *http.Request) {
 							, AVG(state_of_charge) AS soc
 							, AVG(frequency) AS frequency
 							, AVG(vSetpoint) AS setpoint
+							, ifnull(AVG(power),0) as power
 						 FROM inverter_values
 						WHERE logged BETWEEN ? AND ?
 						GROUP BY UNIX_TIMESTAMP(logged) DIV 300
@@ -742,11 +746,11 @@ func getCurrent(w http.ResponseWriter, r *http.Request) {
 							, AVG(state_of_charge) AS soc
 							, AVG(frequency) AS frequency
 							, AVG(vSetpoint) AS setpoint
+							, ifnull(AVG(power),0) as power
 						 FROM inverter_values
 						WHERE logged BETWEEN ? AND ?
 						GROUP BY UNIX_TIMESTAMP(logged) DIV 3600
 						ORDER BY logged DESC`
-
 	var sql string
 	var Results []*CurrentData
 	const DeviceString = "Current Data"
@@ -778,7 +782,7 @@ func getCurrent(w http.ResponseWriter, r *http.Request) {
 		}()
 		for rows.Next() {
 			result := new(CurrentData)
-			if err := rows.Scan(&result.Logged, &result.Amps, &result.Volts, &result.SOC, &result.Hertz, &result.VSetpoint); err != nil {
+			if err := rows.Scan(&result.Logged, &result.Amps, &result.Volts, &result.SOC, &result.Hertz, &result.VSetpoint, &result.Power); err != nil {
 				ReturnJSONError(w, DeviceString, err, http.StatusInternalServerError, true)
 				return
 			}

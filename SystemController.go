@@ -203,6 +203,9 @@ func handleCANFrame(frm can.Frame) {
 		iValues.Current = c307.Current()
 		iValues.FeedSelfC = c307.FeedSelfC()
 		iValues.Esave = c307.Esave()
+	case 0x308:
+		c308 := NewCan308(frm.Data[0:])
+		iValues.inverterPower = c308.LoadPwr()
 	case 0x351:
 		c351 := NewBMS351(frm.Data[0:])
 		iValues.bmsChargeVolts = c351.ChargeVolts()
@@ -335,6 +338,7 @@ func logToDatabase() {
 	lastVsetpoint := iValues.GetSetPoint()
 	lastVbatt := iValues.GetVolts()
 	lastSoc := iValues.GetSOC()
+	lastPower := iValues.GetPower()
 	lastIavailable := TeslaParameters.GetMaxAmps()
 	lastIused := TeslaParameters.GetCurrent()
 	//lastHeatersetting := Heater.GetSetting()
@@ -373,6 +377,7 @@ func logToDatabase() {
 		newSoc := iValues.GetSOC()
 		newIavailable := TeslaParameters.GetMaxAmps()
 		newIused := TeslaParameters.GetCurrent()
+		newPower := iValues.GetPower()
 		//newHeatersetting := Heater.GetSetting()
 		//newHeaterpump := Heater.GetPump()
 		newSolarPump := Heater.GetSolarPump()
@@ -410,15 +415,15 @@ func logToDatabase() {
 			}
 		}
 		lastSolarPump = newSolarPump
-		if (newFrequency != lastFrequency) || (newVsetpoint != lastVsetpoint) || (newVbatt != lastVbatt) || (newbmsIBat != lastbmsIBat) || (newSoc != lastSoc) {
+		if (newFrequency != lastFrequency) || (newVsetpoint != lastVsetpoint) || (newVbatt != lastVbatt) || (newbmsIBat != lastbmsIBat) || (newSoc != lastSoc) || (lastPower != newPower) {
 			lastFrequency = newFrequency
 			lastVsetpoint = newVsetpoint
 			lastVbatt = newVbatt
 			//			lastIbatt = newIbatt
 			lastbmsIBat = newbmsIBat
 			lastSoc = newSoc
-			var _, err = pDB.Exec("insert into inverter_values (frequency, vSetpoint, vBatt, iBatt, state_of_charge) values (?, ?, ?, ?, ?)",
-				newFrequency, newVsetpoint, newVbatt, newbmsIBat, newSoc)
+			var _, err = pDB.Exec("insert into inverter_values (frequency, vSetpoint, vBatt, iBatt, state_of_charge, power) values (?, ?, ?, ?, ?, ?)",
+				newFrequency, newVsetpoint, newVbatt, newbmsIBat, newSoc, newPower)
 			if err != nil {
 				log.Printf("Error writing inverter values to the database - %s", err)
 				_ = pDB.Close()
