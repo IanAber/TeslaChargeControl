@@ -111,7 +111,7 @@
 			// } else {
 			// 	breaker.attr("src", "images/breaker_off.png")
 			// }
-			// // Handke the heater breaker
+			// // Handle the heater breaker
 			// breaker = $("#heaterSwitch");
             // if(result.heater.enabled == "ON") {
 			// 	breaker.attr("src", "images/breaker_on.png");
@@ -257,11 +257,16 @@
 				$("#SolarPump").jqxGauge({caption:{value:sCaption, position: 'bottom', offset: [0, 10]}});
 				$("#SolarPump").val(result.pumps.PSOP);
 			}
-		    if((LastData == null) || (LastData.temps.CondenserIn != result.temps.CondenserIn) || (LastData.temps.CondenserOut != result.temps.CondenserOut)) {
-				$("#CondenserLoop").val([result.temps.CondenserIn / 10, result.temps.CondenserOut / 10]);
-		    }
-		    if((LastData == null) || (LastData.temps.EvaporatorIn != result.temps.EvaporatorIn) || (LastData.temps.EvaporatorOut != result.temps.EvaporatorOut)) {
-				$("#EvaporatorLoop").val([result.temps.EvaporatorIn / 10, result.temps.EvaporatorOut / 10]);
+		    if((LastData == null) ||
+                (LastData.temps.GroundLoopIn != result.temps.GroundLoopIn) ||
+                (LastData.temps.GroundLoopOut != result.temps.GroundLoopOut) ||
+                (LastData.temps.ToHouse != result.temps.ToHouse) ||
+                (LastData.temps.FromHouse != result.temps.FromHouse) ||
+                (LastData.temps.ChillerOut != result.temps.ChillerOut) ||
+                (LastData.temps.Bypass != result.temps.Bypass)) {
+				$("#ChillerLoop").val([result.temps.GroundLoopIn / 10, result.temps.GroundLoopOut / 10,
+                result.temps.ToHouse / 10, result.temps.FromHouse/ 10,
+                result.temps.ChillerOut / 10, result.temps.Bypass / 10]);
 		    }
 		    if((LastData == null) || (LastData.temps.HotTankBottom != result.temps.HotTankBottom) || (LastData.temps.HotTankMiddle != result.temps.HotTankMiddle) || (LastData.temps.HotTankTop != result.temps.HotTankTop)) {
 		 	 	$("#HotTank").val([result.temps.HotTankBottom / 10, result.temps.HotTankMiddle / 10, result.temps.HotTankTop / 10]);
@@ -517,17 +522,17 @@
                 caption: {value: 'Inverter Power (KW)', position: 'bottom', offset: [0, 10], visible: true},
             });
 
-            $('#EvaporatorLoop').jqxBarGauge({
+            $('#ChillerLoop').jqxBarGauge({
                 width: controlsWidth,
                 height: controlsHeight,
-                values: [0.0, 0.0],
-                min: 5,
-                max: 30,
+                values: [0.0, 0.0, 0.0, 0.0, 0.0],
+                min: 0,
+                max: 40,
                 animationDuration: 500,
                 startAngle: 265,
                 endAngle: 275,
                 title:	{
-                            text: 'Evaporator Circuit',
+                            text: 'Chiller Circuits',
                             font: { size: 12, color: 'black', weight: 'bold', family:"Segoi-UI"},
                             margin: { top: 0, bottom: 2, left: 0, right: 0},
                             verticalAlignment: 'bottom'
@@ -547,38 +552,6 @@
                         else
                             return ("Out = " + value + '&#8451;');
                         }
-                }
-            });
-            $('#CondenserLoop').jqxBarGauge({
-                width: controlsWidth,
-                height: controlsHeight,
-                values: [0.0, 0.0],
-                min: 15,
-                max: 45,
-                animationDuration: 500,
-                startAngle: 265,
-                endAngle: 275,
-                title:	{
-                    text: 'Condenser Circuit',
-                    font: { size: 12, color: 'black', weight: 'bold', family:"Segoi-UI"},
-                    margin: { top: 0, bottom: 2, left: 0, right: 0},
-                    verticalAlignment: 'bottom'
-                },
-                labels: {
-                    font: {size: 8,},
-                    precision: 1,
-                },
-                colorScheme: 'customColors',
-                customColorScheme: { name: 'customColors', colors: ['blue', 'red'] },
-                tooltip: {
-                    visible: true,
-                    precision: 1,
-                    formatFunction: function (value, index){
-                        if(index === 0)
-                            return("In = " + value + '&#8451;');
-                        else
-                            return ("Out = " + value + '&#8451;');
-                    }
                 }
             });
 
@@ -975,10 +948,7 @@
               <div id='BufferTank'></div>
           </div>
         <div class="centered"  onclick="window.open('trackers/loop_temps.html')">
-      	  <div id='EvaporatorLoop'></div>
-        </div>
-        <div class="centered"  onclick="window.open('trackers/loop_temps.html')">
-          <div id='CondenserLoop'></div>
+      	  <div id='ChillerLoop'></div>
         </div>
         <div class="centered" onclick="window.open('trackers/inverterPower.html')">
           <div id='InverterPower'></div>

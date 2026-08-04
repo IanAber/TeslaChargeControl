@@ -31,12 +31,12 @@ type TempData struct {
 	DehumidifierOutput float32 `json:"DehumidifierOutput"`
 	MatsInput          float32 `json:"MatsInput"`
 	MatsOutput         float32 `json:"MatsOutput"`
-	CondenserIn        float32 `json:"CondenserIn"`
-	CondenserOut       float32 `json:"CondenserOut"`
-	GeneratorIn        float32 `json:"GeneratorIn"`
-	GeneratorOut       float32 `json:"GeneratorOut"`
-	EvaporatorIn       float32 `json:"EvaporatorIn"`
-	EvaporatorOut      float32 `json:"EvaporatorOut"`
+	GroundLoopOut      float32 `json:"GroundLoopOut"`
+	ChillerOut         float32 `json:"ChillerOut"`
+	GroundLoopIn       float32 `json:"GroundLoopIn"`
+	ToHouse            float32 `json:"ToHouse"`
+	FromHouse          float32 `json:"FromHouse"`
+	Bypass             float32 `json:"Bypass"`
 	HotTankTop         float32 `json:"HotTankTop"`
 	HotTankBottom      float32 `json:"HotTankBottom"`
 	HotTankMiddle      float32 `json:"HotTankMiddle"`
@@ -99,7 +99,6 @@ func GetTimeRange(r *http.Request) (start time.Time, end time.Time, err error) {
 	} else {
 		end = timeVal
 	}
-	//log.Println("Date/time requested from ", start, " to ", end)
 	return
 }
 
@@ -185,8 +184,8 @@ func getData(w http.ResponseWriter, _ *http.Request) {
 
 	getSolarStringData(&result.Solar)
 
-	if rows, err := pDB.Query(`SELECT Logged, MatsInput, MatsOutput, 
-       					CondenserIn, CondenserOut, GeneratorIn, GeneratorOut, EvaportatorIn, EvaporatorOut,
+	if rows, err := pDB.Query(`SELECT Logged, MatsInput, MatsOutput,   					
+       					GroundLoopOut, ChillerOut, GroundLoopIn, ToHouse, FromHouse, Bypass,
        					HotTankTop, HotTankMiddle, HotTankBottom, BufferTankTop, BufferTankMiddle, BufferTankBottom, 
        					SolarCollector, SolarInlet, SolarOutlet, DehumidifierOutput
 					FROM temperatures ORDER BY Logged DESC LIMIT 1`); err != nil {
@@ -200,8 +199,8 @@ func getData(w http.ResponseWriter, _ *http.Request) {
 		}()
 		if rows.Next() {
 			if err := rows.Scan(&result.Temps.Logged, &result.Temps.MatsInput, &result.Temps.MatsOutput,
-				&result.Temps.CondenserIn, &result.Temps.CondenserOut, &result.Temps.GeneratorIn, &result.Temps.GeneratorOut,
-				&result.Temps.EvaporatorIn, &result.Temps.EvaporatorOut,
+				&result.Temps.GroundLoopOut, &result.Temps.ChillerOut, &result.Temps.GroundLoopIn, &result.Temps.ToHouse,
+				&result.Temps.FromHouse, &result.Temps.Bypass,
 				&result.Temps.HotTankTop, &result.Temps.HotTankMiddle, &result.Temps.HotTankBottom,
 				&result.Temps.BufferTankTop, &result.Temps.BufferTankMiddle, &result.Temps.BufferTankBottom,
 				&result.Temps.SolarCollector, &result.Temps.SolarInlet, &result.Temps.SolarOutlet, &result.Temps.DehumidifierOutput); err != nil {
@@ -581,32 +580,32 @@ func getSolar(w http.ResponseWriter, r *http.Request) {
 }
 
 type LoopTemps struct {
-	Logged float64 `json:"logged"`
-	TCHGI1 float64 `json:"TCHGI_1"`
-	TCHGO1 float64 `json:"TCHGO_1"`
-	TCHEI1 float64 `json:"TCHEI_1"`
-	TCHEO1 float64 `json:"TCHEO_1"`
-	TCHCI1 float64 `json:"TCHCI_1"`
-	TCHCO1 float64 `json:"TCHCO_1"`
+	Logged        float64 `json:"logged"`
+	GroundLoopIn  float64 `json:"GroundLoopIn"`
+	GroundLoopOut float64 `json:"GroundLoopOut"`
+	ToHouse       float64 `json:"ToHouse"`
+	FromHouse     float64 `json:"FromHouse"`
+	ChillerOut    float64 `json:"ChillerOut"`
+	Bypass        float64 `json:"Bypass"`
 }
 
 func getLoopTemps(w http.ResponseWriter, r *http.Request) {
 	const SQLDirect = `SELECT UNIX_TIMESTAMP(Logged) AS Logged
-            ,GeneratorIn / 10 AS GeneratorIn, GeneratorOut / 10 AS GeneratorOut
-            ,EvaportatorIn / 10 AS EvaportatorIn, EvaporatorOut / 10 AS EvaporatorOut
-            ,CondenserIn / 10 AS CondenserIn, CondenserOut / 10 AS CondenserOut
+            ,GroundLoopIn / 10 AS GroundLoopIn, GroundLoopOut / 10 AS GroundLoopOut
+            ,ToHouse / 10 AS ToHouse, FromHouse / 10 AS FromHouse
+            ,ChillerOut / 10 AS ChillerOut, Bypass / 10 AS Bypass
  		 FROM temperatures
  		WHERE logged BETWEEN ? AND ?`
 
 	const SQLBy5Mins = `SELECT Logged
-            ,AVG(GeneratorIn) / 10 AS GeneratorIn, AVG(GeneratorOut) / 10 AS GeneratorOut
-            ,AVG(EvaportatorIn) / 10 AS EvaportatorIn, AVG(EvaporatorOut) / 10 AS EvaporatorOut
-            ,AVG(CondenserIn) / 10 AS CondenserIn, AVG(CondenserOut) / 10 AS CondenserOut
+            ,AVG(GroundLoopIn) / 10 AS GroundLoopIn, AVG(GroundLoopOut) / 10 AS GroundLoopOut
+            ,AVG(ToHouse) / 10 AS ToHouse, AVG(FromHouse) / 10 AS FromHouse
+            ,AVG(ChillerOut) / 10 AS ChillerOut, AVG(Bypass) / 10 AS Bypass
 	  FROM (
     	    SELECT UNIX_TIMESTAMP(Logged) AS Logged,
-				GeneratorIn,GeneratorOut,
-				EvaportatorIn, EvaporatorOut,
-				CondenserIn, CondenserOut
+				GroundLoopIn, GroundLoopOut
+				,ToHouse, FromHouse
+				,ChillerOut, Bypass
 		   FROM temperatures
           WHERE Logged BETWEEN ? AND ?) AS temps
 	  GROUP BY Logged DIV 300`
@@ -639,9 +638,9 @@ func getLoopTemps(w http.ResponseWriter, r *http.Request) {
 		for rows.Next() {
 			result := new(LoopTemps)
 			if err := rows.Scan(&result.Logged,
-				&result.TCHGI1, &result.TCHGO1,
-				&result.TCHEI1, &result.TCHEO1,
-				&result.TCHCI1, &result.TCHCO1); err != nil {
+				&result.GroundLoopIn, &result.GroundLoopOut,
+				&result.ToHouse, &result.FromHouse,
+				&result.ChillerOut, &result.Bypass); err != nil {
 				ReturnJSONError(w, DeviceString, err, http.StatusInternalServerError, true)
 				return
 			}

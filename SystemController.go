@@ -489,12 +489,12 @@ func GetTemperatures() {
 		//		SolarExchanger int16 //TSOS
 		//		Bedroom        int16 //TIN1
 
-		CondenserIn   int16
-		CondenserOut  int16
-		EvaporatorIn  int16
-		EvaporatorOut int16
-		GeneratorIn   int16
-		GeneratorOut  int16
+		GroundLoopOut int16
+		ChillerOut    int16
+		FromHouse     int16
+		Bypass        int16
+		GroundLoopIn  int16
+		ToHouse       int16
 	}
 	esp1 := NewESPTemperature("http://ESPTEMP1")
 	esp2 := NewESPTemperature("http://ESPTEMP2")
@@ -525,12 +525,12 @@ func GetTemperatures() {
 
 		//		esp3.readTemperatures()
 		temps = esp3.getTemperatures()
-		temperatures.GeneratorIn = int16(temps[0] * 10)
-		temperatures.GeneratorOut = int16(temps[1] * 10)
-		temperatures.EvaporatorIn = int16(temps[2] * 10)
-		temperatures.EvaporatorOut = int16(temps[3] * 10)
-		temperatures.CondenserIn = int16(temps[4] * 10)
-		temperatures.CondenserOut = int16(temps[5] * 10)
+		temperatures.GroundLoopIn = int16(temps[0] * 10)
+		temperatures.ToHouse = int16(temps[1] * 10)
+		temperatures.FromHouse = int16(temps[2] * 10)
+		temperatures.Bypass = int16(temps[3] * 10)
+		temperatures.GroundLoopOut = int16(temps[4] * 10)
+		temperatures.ChillerOut = int16(temps[5] * 10)
 
 		// Signal the solar pump controller that we have new values
 		solarTemps := new(SolarTemps)
@@ -566,7 +566,7 @@ func GetTemperatures() {
 		}
 		if _, err := pDB.Exec(`INSERT INTO logging.temperatures (HotTankTop, HotTankMiddle, HotTankBottom,
                                   						BufferTankTop, BufferTankMiddle, BufferTankBottom, 
-                                  						GeneratorIn, GeneratorOut, EvaportatorIn, EvaporatorOut, CondenserIn, CondenserOut, 
+                                  						GroundLoopIn, ToHouse, FromHouse, Bypass, GroundLoopOut, ChillerOut, 
                                   						SolarCollector, SolarInlet, SolarOutlet, MatsInput, 
                                   						MatsOutput, DehumidifierOutput)
 										VALUES (?,?,?,?,?,?,
@@ -574,7 +574,7 @@ func GetTemperatures() {
 										        ?,?,?,?,?,?)`,
 			temperatures.HotTankTop, temperatures.HotTankMiddle, temperatures.HotTankBottom,
 			temperatures.ColdTankTop, temperatures.ColdTankMiddle, temperatures.ColdTankBottom,
-			temperatures.GeneratorIn, temperatures.GeneratorOut, temperatures.EvaporatorIn, temperatures.EvaporatorOut, temperatures.CondenserIn, temperatures.CondenserOut,
+			temperatures.GroundLoopIn, temperatures.ToHouse, temperatures.FromHouse, temperatures.Bypass, temperatures.GroundLoopOut, temperatures.ChillerOut,
 			temperatures.SolarCollector, temperatures.SolarInlet, temperatures.SolarOutlet, temperatures.MatsInput,
 			temperatures.MatsOutput, temperatures.DehumidifierOutput); err != nil {
 			log.Print(err)
