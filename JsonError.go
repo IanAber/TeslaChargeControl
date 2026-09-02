@@ -23,7 +23,7 @@ func (j *JSONError) AddErrorString(device string, err string) error {
 	e.Device = device
 	e.Err = err
 	j.Errors = append(j.Errors, e)
-	return fmt.Errorf("Device : %s | error %s", device, err)
+	return fmt.Errorf("device : %s | error %s", device, err)
 }
 
 func (j *JSONError) AddError(device string, err error) error {
@@ -67,13 +67,13 @@ func ReturnJSONError(w http.ResponseWriter, device string, err error, httpReturn
 	}
 }
 
-func ReturnJSONErrorString(w http.ResponseWriter, device string, errStr string, httpReturnCode int, bLog bool) {
-	var jErr JSONError
-
-	err := jErr.AddErrorString(device, errStr)
-	jErr.Success = false
-	jErr.ReturnError(w, httpReturnCode)
-	if bLog {
-		log.Print(err)
-	}
-}
+//func ReturnJSONErrorString(w http.ResponseWriter, device string, errStr string, httpReturnCode int, bLog bool) {
+//	var jErr JSONError
+//
+//	err := jErr.AddErrorString(device, errStr)
+//	jErr.Success = false
+//	jErr.ReturnError(w, httpReturnCode)
+//	if bLog {
+//		log.Print(err)
+//	}
+//}

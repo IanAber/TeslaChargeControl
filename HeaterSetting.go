@@ -1,11 +1,12 @@
 package main
 
 import (
-	"github.com/golang/glog"
-	"github.com/stianeikeland/go-rpio"
 	"log"
 	"sync"
 	"time"
+
+	"github.com/golang/glog"
+	"github.com/stianeikeland/go-rpio"
 )
 
 /****************************************************************************************

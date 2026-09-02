@@ -3,9 +3,10 @@ package twcSlave
 import (
 	"SystemController/twcMessage"
 	"fmt"
-	"github.com/goburrow/serial"
 	"log"
 	"time"
+
+	"github.com/goburrow/serial"
 )
 
 //type Slave interface {

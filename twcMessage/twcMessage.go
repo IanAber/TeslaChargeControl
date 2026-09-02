@@ -4,9 +4,10 @@ import (
 	"encoding/binary"
 	"encoding/hex"
 	"fmt"
-	"github.com/goburrow/serial"
 	"log"
 	"time"
+
+	"github.com/goburrow/serial"
 )
 
 // Message structure
@@ -50,30 +51,30 @@ func New(p serial.Port, verbose bool) TwcMessage {
 
 // AddByte /*
 // Add a byte to the buffer
-func (this *TwcMessage) AddByte(b byte) (bool, error) {
+func (twcMessage *TwcMessage) AddByte(b byte) (bool, error) {
 	if b == 0xC0 {
-		if !this.inProgress {
+		if !twcMessage.inProgress {
 			// 0xC0 is the delimiter. If we are not currently buffering a message we should expect the next character to be FD for a slave message
 			// Set the pointer to the start of the buffer in anticipation
-			this.currentByte = 0
-			this.inProgress = true
+			twcMessage.currentByte = 0
+			twcMessage.inProgress = true
 			return false, nil
 		} else {
-			if this.currentByte < 10 {
-				// We already saw the 0xC0 code byte we have not got enough characters for a real message yet message yet so this can't be the end.
+			if twcMessage.currentByte < 10 {
+				// We already saw the 0xC0 code byte we have not got enough characters for a real message yet message yet so twcMessage can't be the end.
 				// Treat it as another start
-				this.currentByte = 0
-				this.isEscaped = false
+				twcMessage.currentByte = 0
+				twcMessage.isEscaped = false
 				return false, nil
 			} else {
 				// If we are actually receiving a message 0xC0 signifies the end of the message but we must have at least 14 bytes
-				this.inProgress = false
-				if this.IsValid() {
+				twcMessage.inProgress = false
+				if twcMessage.IsValid() {
 					return true, nil
 				} else {
-					this.currentByte = 0
-					this.isEscaped = false
-					this.inProgress = false
+					twcMessage.currentByte = 0
+					twcMessage.isEscaped = false
+					twcMessage.inProgress = false
 					return false, fmt.Errorf("invalid message")
 				}
 			}
@@ -81,32 +82,32 @@ func (this *TwcMessage) AddByte(b byte) (bool, error) {
 	}
 	// 0xDB is the escape code so just set the flag bu do not record the byte
 	if b == 0xDB {
-		this.isEscaped = true
+		twcMessage.isEscaped = true
 		return false, nil
 	}
-	// If the last byte was an escape character process this byte accordingly
+	// If the last byte was an escape character process twcMessage byte accordingly
 	// Escape sequences start with 0xdb then 0xdc => 0xc0 or 0xdd => 0xdb
-	if this.isEscaped {
+	if twcMessage.isEscaped {
 		switch b {
 		case 0xDC:
-			this.bytes[this.currentByte] = 0xC0
+			twcMessage.bytes[twcMessage.currentByte] = 0xC0
 		case 0xDD:
-			this.bytes[this.currentByte] = 0xDB
+			twcMessage.bytes[twcMessage.currentByte] = 0xDB
 		default:
 			return false, fmt.Errorf("received 0x%x in an escape sequence. Only 0xDC or 0xDD expected", b)
 		}
 	} else {
 		// Not in an escape sequence so record the actual byte sent
-		this.bytes[this.currentByte] = b
+		twcMessage.bytes[twcMessage.currentByte] = b
 	}
 	// Move the pointer to the next byte
-	this.currentByte++
+	twcMessage.currentByte++
 	// Make sure we do not overrun the buffer
-	if this.currentByte >= len(this.bytes) {
-		this.currentByte = 0
-		this.inProgress = false
-		this.isEscaped = false
-		return false, fmt.Errorf("buffer overrun!\n%s", hex.Dump(this.bytes))
+	if twcMessage.currentByte >= len(twcMessage.bytes) {
+		twcMessage.currentByte = 0
+		twcMessage.inProgress = false
+		twcMessage.isEscaped = false
+		return false, fmt.Errorf("buffer overrun!\n%s", hex.Dump(twcMessage.bytes))
 	}
 	// Not at the end of the message yet but no errors
 	return false, nil

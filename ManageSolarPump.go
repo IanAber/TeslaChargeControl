@@ -1,9 +1,10 @@
 package main
 
 import (
-	"go.einride.tech/pid"
 	"log"
 	"time"
+
+	"go.einride.tech/pid"
 )
 
 type SolarTemps struct {

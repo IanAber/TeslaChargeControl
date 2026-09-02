@@ -499,9 +499,15 @@ func GetTemperatures() {
 	esp1 := NewESPTemperature("http://ESPTEMP1")
 	esp2 := NewESPTemperature("http://ESPTEMP2")
 	esp3 := NewESPTemperature("http://ESPTEMP3")
-	esp1.readTemperatures()
-	esp2.readTemperatures()
-	esp3.readTemperatures()
+	if esp1 != nil {
+		esp1.readTemperatures()
+	}
+	if esp2 != nil {
+		esp2.readTemperatures()
+	}
+	if esp3 != nil {
+		esp3.readTemperatures()
+	}
 
 	tempTicker := time.NewTicker(time.Second * 5)
 	for range tempTicker.C {

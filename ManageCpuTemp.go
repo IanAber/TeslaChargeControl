@@ -1,12 +1,13 @@
 package main
 
 import (
-	"github.com/stianeikeland/go-rpio"
 	"log"
 	"os"
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/stianeikeland/go-rpio"
 )
 
 const CpuTempFile = "/sys/class/thermal/thermal_zone0/temp"
