@@ -18,22 +18,28 @@ func logEG4(db *sql.DB, sr *EG4.SystemReading) error {
 	}
 	defer func() { _ = tx.Rollback() }() // no-op after Commit
 
+	// The BMS may not pass SOH to the inverters; log NULL rather than 0.
+	var soh sql.NullInt64
+	if sr.SOH > 0 {
+		soh = sql.NullInt64{Int64: int64(sr.SOH), Valid: true}
+	}
+
 	res, err := tx.Exec(`INSERT INTO logging.eg4_system (logged, complete, units, any_fault,
                                   pv_power, load_power, eps_power, inverter_power, charge_power, discharge_power,
                                   battery_power, ac_charge_power, ac_couple_power, gen_power,
-                                  battery_voltage, soc,
+                                  battery_voltage, soc, soh,
                                   pv_energy_today, load_energy_today, eps_energy_today, charge_energy_today,
                                   discharge_energy_today, ac_charge_energy_today, gen_energy_today)
                          VALUES (?,?,?,?,
                                  ?,?,?,?,?,?,
                                  ?,?,?,?,
-                                 ?,?,
+                                 ?,?,?,
                                  ?,?,?,?,
                                  ?,?,?)`,
 		sr.Time, sr.Complete, len(sr.Units), sr.AnyFault,
 		sr.PVPower, sr.LoadPower, sr.EPSPower, sr.InverterPower, sr.ChargePower, sr.DischargePower,
 		sr.BatteryPower, sr.ACChargePower, sr.ACCouplePower, sr.GenPower,
-		sr.BatteryVoltage, sr.SOC,
+		sr.BatteryVoltage, sr.SOC, soh,
 		sr.PVEnergyToday, sr.LoadEnergyToday, sr.EPSEnergyToday, sr.ChargeEnergyToday,
 		sr.DischargeEnergyToday, sr.ACChargeEnergyToday, sr.GenEnergyToday)
 	if err != nil {
@@ -47,7 +53,7 @@ func logEG4(db *sql.DB, sr *EG4.SystemReading) error {
 	for _, r := range sr.Units {
 		if _, err := tx.Exec(`INSERT INTO logging.eg4_inverter (system_id, logged, name, status, status_text,
                                   pv1_voltage, pv1_current, pv1_power, pv2_voltage, pv2_current, pv2_power, pv_power,
-                                  battery_voltage, soc, soh, charge_power, discharge_power, battery_power, battery_current_bms,
+                                  charge_power, discharge_power, battery_power, battery_current_bms,
                                   inverter_power, eps_voltage, eps_frequency, eps_power, eps_apparent_power,
                                   eps_l1_voltage, eps_l2_voltage, eps_l1_power, eps_l2_power, load_power,
                                   ac_couple_power, ac_charge_power, ac_input_is_gen,
@@ -63,7 +69,7 @@ func logEG4(db *sql.DB, sr *EG4.SystemReading) error {
                                   parallel_role, parallel_phase, parallel_count)
                          VALUES (?,?,?,?,?,
                                  ?,?,?,?,?,?,?,
-                                 ?,?,?,?,?,?,?,
+                                 ?,?,?,?,
                                  ?,?,?,?,?,
                                  ?,?,?,?,?,
                                  ?,?,?,
@@ -79,7 +85,7 @@ func logEG4(db *sql.DB, sr *EG4.SystemReading) error {
                                  ?,?,?)`,
 			systemID, r.Time, r.Name, r.Status, r.StatusText,
 			r.PV1Voltage, r.PV1Current, r.PV1Power, r.PV2Voltage, r.PV2Current, r.PV2Power, r.PVPower,
-			r.BatteryVoltage, r.SOC, r.SOH, r.ChargePower, r.DischargePower, r.BatteryPower, r.BatteryCurrentBMS,
+			r.ChargePower, r.DischargePower, r.BatteryPower, r.BatteryCurrentBMS,
 			r.InverterPower, r.EPSVoltage, r.EPSFrequency, r.EPSPower, r.EPSApparentPower,
 			r.EPSL1Voltage, r.EPSL2Voltage, r.EPSL1Power, r.EPSL2Power, r.LoadPower,
 			r.ACCouplePower, r.ACChargePower, r.ACInputIsGen,

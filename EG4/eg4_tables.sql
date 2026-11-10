@@ -24,6 +24,7 @@ CREATE TABLE IF NOT EXISTS logging.eg4_system (
     -- Shared battery bank (averaged across inverters)
     battery_voltage          DECIMAL(5,2)    NOT NULL,
     soc                      DECIMAL(5,2)    NOT NULL,
+    soh                      TINYINT UNSIGNED NULL,              -- NULL when the BMS does not report it
 
     -- Energy today, kWh (summed across inverters)
     pv_energy_today          DECIMAL(8,1)    NOT NULL,
@@ -55,10 +56,7 @@ CREATE TABLE IF NOT EXISTS logging.eg4_inverter (
     pv2_power                INT             NOT NULL,
     pv_power                 INT             NOT NULL,
 
-    -- Battery
-    battery_voltage          DECIMAL(5,1)    NOT NULL,
-    soc                      TINYINT UNSIGNED NOT NULL,
-    soh                      TINYINT UNSIGNED NOT NULL,
+    -- Battery (voltage, SOC and SOH are in eg4_system)
     charge_power             INT             NOT NULL,
     discharge_power          INT             NOT NULL,
     battery_power            INT             NOT NULL,           -- + charging / - discharging

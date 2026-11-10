@@ -86,6 +86,7 @@ type SystemReading struct {
 	// Shared battery bank: averaged across units
 	BatteryVoltage float64 // V
 	SOC            float64 // %
+	SOH            int     // %, 0 when no inverter reports it
 
 	AnyFault bool
 }
@@ -145,6 +146,18 @@ func (s *System) Read(ctx context.Context) (*SystemReading, error) {
 	n := float64(len(sr.Units))
 	sr.BatteryVoltage /= n
 	sr.SOC /= n
+	// SOH is 0 when the BMS does not pass it to the inverter, so only
+	// average the units that report it.
+	sohSum, sohN := 0, 0
+	for _, r := range sr.Units {
+		if r.SOH > 0 {
+			sohSum += r.SOH
+			sohN++
+		}
+	}
+	if sohN > 0 {
+		sr.SOH = (sohSum + sohN/2) / sohN
+	}
 	sr.BatteryPower = sr.ChargePower - sr.DischargePower
 	return sr, nil
 }
