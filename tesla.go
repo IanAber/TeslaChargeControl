@@ -27,7 +27,7 @@ func calculatePowerAvailable() {
 		}
 
 		powerState := iValues.GetChargeLevel()
-		log.Printf("powerState = %d", powerState)
+		//		log.Printf("powerState = %d", powerState)
 		// Set the total car charging current for all cars charging
 		carCurrent := float32(0.0)
 		for i := range slaves {

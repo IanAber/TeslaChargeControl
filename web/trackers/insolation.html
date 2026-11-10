@@ -115,7 +115,7 @@
 						alert('Solar Fetch Error :-S' + err.message);
 					}
 				});
-		};
+		}
 		
 		function goBack() {
 			window.clearInterval(solarTimeOut);
@@ -131,6 +131,7 @@
         <div id='solarChartContainer' style="width:100%; height: 96%" ></div>
 		<div style="text-align:center; width:100%; height: 4%">
             <button onClick="goBack()" style="width:50%;height:100%" >Back</button>
+            <label for="timeRange">Time Range</label>
             <select id="timeRange" onchange="getSolar()">
                 <option value=259200000>3 Days</option>
                 <option value=172800000>2 Days</option>

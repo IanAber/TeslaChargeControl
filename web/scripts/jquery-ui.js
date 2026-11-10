@@ -4152,7 +4152,7 @@ if ( !$.fn.even || !$.fn.odd ) {
 	} );
 }
 
-;
+
 /*!
  * jQuery UI Keycode 1.13.1
  * http://jqueryui.com

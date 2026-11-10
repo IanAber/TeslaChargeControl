@@ -5,8 +5,8 @@ import (
 	"errors"
 	"fmt"
 	"io/fs"
-	"io/ioutil"
 	"math"
+	"os"
 )
 
 type QuinticFunction struct {
@@ -31,7 +31,7 @@ type QuinticFunction struct {
 func (eq *QuinticFunction) SaveConstants(filename string) error {
 	marshalled, err := json.Marshal(eq)
 	if err == nil {
-		err = ioutil.WriteFile(filename, marshalled, fs.ModePerm)
+		err = os.WriteFile(filename, marshalled, fs.ModePerm)
 		if err == nil {
 			return eq.LoadConstants(filename)
 		}
@@ -40,7 +40,7 @@ func (eq *QuinticFunction) SaveConstants(filename string) error {
 }
 
 func (eq *QuinticFunction) LoadConstants(filename string) error {
-	file, err := ioutil.ReadFile(filename)
+	file, err := os.ReadFile(filename)
 	if err != nil {
 		return err
 	}

@@ -1,6 +1,6 @@
 module SystemController
 
-go 1.16
+go 1.24.7
 
 require (
 	github.com/IanAber/SMACanMessages v0.0.0-20220324225941-122bdd7703db
@@ -11,5 +11,6 @@ require (
 	github.com/gorilla/mux v1.8.0
 	github.com/stianeikeland/go-rpio v4.2.0+incompatible
 	go.einride.tech/pid v0.1.0
-	golang.org/x/oauth2 v0.0.0-20211104180415-d3ed0bb246c8
 )
+
+require golang.org/x/sys v0.0.0-20190215142949-d0b11bdaac8a // indirect

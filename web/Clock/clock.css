@@ -28,7 +28,7 @@ body {
 }
 .clock-outer .clock-inner .mins-box span {
   position: absolute;
-  top: 0px;
+  top: 0;
   left: 0;
   right: 0;
   margin: auto;
@@ -364,14 +364,11 @@ body {
     transform: scale(2.5);
   }
 }
-</style>
 
-  <script>
+<script>
   window.console = window.console || function(t) {};
 </script>
 
-  
-  
   <script>
   if (document.location.search.match(/type=embed/gi)) {
     window.parent.postMessage("resize", "*");

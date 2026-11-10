@@ -1,7 +1,6 @@
 package main
 
 import (
-	"log"
 	"os"
 	"strconv"
 	"strings"
@@ -39,12 +38,12 @@ func ManageCpuTemp() {
 		pin.Mode(rpio.Output)
 		if t, err := GetCpuTemp(); err != nil || t > 49.0 {
 			if pin.Read() != 0 {
-				log.Print("Temp = ", t, " Turn on the fan")
+				//				log.Print("Temp = ", t, " Turn on the fan")
 				pin.Low()
 			}
 		} else {
 			if (t < 46) && (pin.Read() == 0) {
-				log.Print("Temp = ", t, " Turn off the fan")
+				//				log.Print("Temp = ", t, " Turn off the fan")
 				pin.High()
 			}
 		}

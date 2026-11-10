@@ -8,9 +8,13 @@
   </component>
   <component name="NewModuleRootManager">
     <content url="file://$MODULE_DIR$">
+      <excludeFolder url="file://$MODULE_DIR$/web/Clock" />
+      <excludeFolder url="file://$MODULE_DIR$/web/jqwidgets" />
+      <excludeFolder url="file://$MODULE_DIR$/web/scripts" />
       <excludeFolder url="file://$MODULE_DIR$/web/trackers/.AppleDouble" />
     </content>
     <orderEntry type="inheritedJdk" />
     <orderEntry type="sourceFolder" forTests="false" />
+    <orderEntry type="library" name="jquery" level="project" />
   </component>
 </module>

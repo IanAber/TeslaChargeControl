@@ -73,7 +73,7 @@
 					console.log('Fetch Error :-S' + err);
 				});
 			setTimeout(getData, 2000);
-		};
+		}
 
 		function getRealTimeData() {
 			fetch('/')
@@ -243,7 +243,7 @@
             $("#dischargeVoltsVal").text(result.inverter.bmsDischargeVolts + "V");
             $("#maxChargeAmpsVal").text(result.inverter.bmsChargeCurrentMax + "A");
             $("#maxDischargeAmpsVal").text(result.inverter.bmsDichargeCurrentMax + "A");
-		};
+		}
 
 		function setData(result) {
 			var systime = Date.parse(result.temps.logged.replace(/-/g, "/"));
@@ -359,7 +359,7 @@
                         case 0 : return("Collector = " + value + '&#8451;');
                         case 1 : return ("Input = " + value + '&#8451;');
                         default : return ("Output = " + value + '&#8451;');
-                    };
+                    }
                 }}
             });
             $('#Solar').jqxBarGauge({
@@ -399,7 +399,7 @@
                             case 8 : return("Inverter 4-A = " + value + 'W');
                             case 9 : return("Inverter 4-B = " + value + 'W');
                             default : return ("Inverter 4-C = " + value + 'W');
-                        };
+                        }
                     }}
             });
             $('#HotTank').jqxBarGauge({
@@ -497,7 +497,7 @@
                             case 1 : return ("Output = " + value + '&#8451;');
                                 break;
                             default : return ("Input = " + value + '&#8451;');
-                        };
+                        }
                     }}
             });
 
@@ -603,7 +603,7 @@
                                             {
                                                 case 0 : return("Available = " + value + 'A');
                                                 default : return ("Charging = " + value + 'A');
-                                            };
+                                            }
                                         }}
             });
 
@@ -844,31 +844,31 @@
             margin-bottom: 0;
         }
     	.BUTTON_JKX {
-		   background: #2FC8F6;
-		   background-image: -webkit-linear-gradient(top, #2FC8F6, #4036D0);
-		   background-image: -moz-linear-gradient(top, #2FC8F6, #4036D0);
-		   background-image: -ms-linear-gradient(top, #2FC8F6, #4036D0);
-		   background-image: -o-linear-gradient(top, #2FC8F6, #4036D0);
-		   background-image: linear-gradient(to bottom, #2FC8F6, #4036D0);
-		   -webkit-border-radius: 20px;
-		   -moz-border-radius: 20px;
-		   border-radius: 20px;
-		   height: 19px;
-		   line-height: 19px;
-		   color: #FFFFFF;
-		   font-family: Open Sans;
-		   width: 147px;
-		   font-size: 18px;
-		   font-weight: 100;
-		   padding: 6px;
-		   box-shadow: 1px 1px 20px 0px #000000;
-		   -webkit-box-shadow: 1px 1px 20px 0px #000000;
-		   -moz-box-shadow: 1px 1px 20px 0px #000000;
-		   text-shadow: 1px 1px 20px #000000;
-		   border: solid #337FED 1px;
-		   text-decoration: none;
-		   display: inline-block;
-		   cursor: pointer;
+		    background: #2FC8F6;
+		    background-image: -webkit-linear-gradient(top, #2FC8F6, #4036D0);
+		    background-image: -moz-linear-gradient(top, #2FC8F6, #4036D0);
+		    background-image: -ms-linear-gradient(top, #2FC8F6, #4036D0);
+		    background-image: -o-linear-gradient(top, #2FC8F6, #4036D0);
+		    background-image: linear-gradient(to bottom, #2FC8F6, #4036D0);
+		    -webkit-border-radius: 20px;
+		    -moz-border-radius: 20px;
+		    border-radius: 20px;
+		    height: 19px;
+		    line-height: 19px;
+		    color: #FFFFFF;
+		    font-family: Open Sans;
+		    width: 147px;
+		    font-size: 18px;
+		    font-weight: 100;
+		    padding: 6px;
+		    box-shadow: 1px 1px 20px 0px #000000;
+            webkit-box-shadow: 1px 1px 20px 0px #000000;
+            -moz-box-shadow: 1px 1px 20px 0px #000000;
+            text-shadow: 1px 1px 20px #000000;
+            border: solid #337FED 1px;
+            text-decoration: none;
+            display: inline-block;
+            cursor: pointer;
 		}
 		.switch {
 			margin-left:10px;
@@ -888,7 +888,7 @@
       <div id='temperatures' style="top:0;left:0;margin:0; display: grid; grid-template-columns: 20vw 20vw 20vw 20vw 20vw; grid-template-rows: auto">
         <div class="centered" style="display: grid; grid-template-rows: auto 3em">
             <div id="SolarPumpContainer">
-                <div id='SolarPump' style='margin-left:0px;margin-right:0px;margin-top:1%;margin-bottom:0' onclick="window.open('trackers/solarPump.html')"></div>
+                <div id='SolarPump' style='margin-left:0;margin-right:0;margin-top:1%;margin-bottom:0' onclick="window.open('trackers/solarPump.html')"></div>
             </div>
             <div id='Heater' style='margin-left:5%;margin-right:5%;margin-top:1%;margin-bottom:0;height:2em'>
               <p style="text-align:center; margin-top:0; margin-bottom:0; font-size:x-small">Cabinet Fans <span id=fanStatus>?</span></p>

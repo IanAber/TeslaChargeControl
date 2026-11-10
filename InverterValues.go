@@ -2,7 +2,6 @@ package main
 
 import (
 	"SystemController/quinticFunction"
-	"log"
 	"strconv"
 	"sync"
 )
@@ -307,7 +306,7 @@ func (i *InverterValues) GetChargeLevel() int {
 	i.mu.Lock()
 	defer i.mu.Unlock()
 
-	log.Printf("SOC = %f | Amps = %f", i.soc, i.bmsIBat)
+	//	log.Printf("SOC = %f | Amps = %f", i.soc, i.bmsIBat)
 	if i.soc > 95 {
 		return 1
 	}

@@ -1,22 +1,29 @@
 package main
 
 import (
+	"SystemController/EG4"
 	"SystemController/Params"
 	"SystemController/twcMessage"
 	"SystemController/twcSlave"
+	"context"
 	_ "crypto/aes"
 	"database/sql"
+	"encoding/json"
 	"errors"
 	"flag"
+	"fmt"
 	"log"
+	"net"
 	"os"
+	"os/signal"
+	"strings"
 	"time"
 
 	"github.com/IanAber/SMACanMessages"
+	"github.com/goburrow/serial"
 
 	"github.com/brutella/can"
 	_ "github.com/go-sql-driver/mysql"
-	"github.com/goburrow/serial"
 )
 
 // Version 2 makes parameters editable via the WEB interface
@@ -51,6 +58,10 @@ var (
 		power  float32
 		logged time.Time
 	}
+	// EG4 parameters
+	inverterIPs string
+	every       time.Duration
+	eg4         *EG4.System
 )
 
 func findSlave(slaves []twcSlave.Slave, address uint16) int {
@@ -93,9 +104,9 @@ func checkSlaveTimeouts(slaves []twcSlave.Slave) []twcSlave.Slave {
 				log.Printf("=======> Slave %04x has gone away! Time span = %d > 10 seconds (%d). <=======\n", s.GetAddress(), s.TimeSinceLastHeartbeat(), time.Second*10)
 				slaves[i] = slaves[len(slaves)-1]
 				return slaves[:len(slaves)-1]
-			} else {
-				s.SetCurrent(0)
 			}
+
+			s.SetCurrent(0)
 		}
 	}
 	return slaves
@@ -230,9 +241,9 @@ func processCANFrames() {
 	if err != nil {
 		log.Println("To enable CAN on the Rspbreey Pi follow this article - https://projects-raspberry.com/how-to-connect-raspberry-pi-to-can-bus/")
 		log.Fatalf("Error starting CAN interface - %s -\nSorry, I am giving up", err)
-	} else {
-		log.Println("Connected to CAN bus - monitoring the inverters.")
 	}
+
+	log.Println("Connected to CAN bus - monitoring the inverters.")
 	bus.SubscribeFunc(handleCANFrame)
 	err = bus.ConnectAndPublish()
 	if err != nil {
@@ -278,14 +289,25 @@ func init() {
 	flag.StringVar(&databasePort, "dbPort", "3306", "Database port")
 	flag.BoolVar(&verbose, "verbose", false, "Enable verbose mode to trace information to STDOUT.")
 	flag.StringVar(&ChargingConstantsFile, "constantsFile", "/var/www/html/params/charge_params.json", "Path of the file in which the charging constants are stored")
+
+	flag.StringVar(&inverterIPs, "inverters", "192.168.10.201,192.168.10.202", "Comma separated list of EG4 inverter IP addresses (Modbus TCP port 502, unit 1). The first is XP-1, the second XP-2, etc.")
+	flag.DurationVar(&every, "every", 10*time.Second, "poll interval")
 	flag.Parse()
+
+	// open log file
+	logFile, err := os.OpenFile("/var/log/SystemController", os.O_APPEND|os.O_RDWR|os.O_CREATE, 0644)
+	if err != nil {
+		log.Panic(err)
+	}
+	// set logout put
+	log.SetOutput(logFile)
 	log.SetFlags(log.Lshortfile | log.LstdFlags)
 
 	// Initialise the current values
 	TeslaParameters.Reset()
 	Heater = NewHeaterSetting()
 	// Set up the quintic function to control charging
-	err := iValues.LoadFunctionConstants(ChargingConstantsFile)
+	err = iValues.LoadFunctionConstants(ChargingConstantsFile)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -307,18 +329,18 @@ func init() {
 	p, err := serial.Open(&config)
 	if err != nil {
 		log.Fatalf("ERROR - %s - Cannot connect to the Tesla RS485 port at %s\nSorry. I am givng up!", err, config.Address)
-	} else {
-		log.Println("Connecting to Tesla Wall Charger via ", config.Address)
 	}
+
+	log.Println("Connecting to Tesla Wall Charger via ", config.Address)
 	port = p
 
 	// Set up the database connection
 	pDB, err = connectToDatabase()
 	if err != nil {
 		log.Fatalf("Failed to connect to to the database - %s - Sorry, I am giving up.", err)
-	} else {
-		log.Println("Connected to the database")
 	}
+
+	log.Println("Connected to the database")
 
 	log.SetFlags(log.Lshortfile | log.Ldate | log.Ltime)
 	//	Electrolyser.Enabled = true
@@ -512,31 +534,37 @@ func GetTemperatures() {
 	tempTicker := time.NewTicker(time.Second * 5)
 	for range tempTicker.C {
 		//		esp1.readTemperatures()
-		temps := esp1.getTemperatures()
-		temperatures.SolarCollector = int16(temps[0] * 10)
-		temperatures.SolarInlet = int16(temps[1] * 10)
-		temperatures.SolarOutlet = int16(temps[2] * 10)
-		temperatures.HotTankTop = int16(temps[3] * 10)
-		temperatures.HotTankMiddle = int16(temps[4] * 10)
-		temperatures.HotTankBottom = int16(temps[5] * 10)
+		if esp1 != nil {
+			temps := esp1.getTemperatures()
+			temperatures.SolarCollector = int16(temps[0] * 10)
+			temperatures.SolarInlet = int16(temps[1] * 10)
+			temperatures.SolarOutlet = int16(temps[2] * 10)
+			temperatures.HotTankTop = int16(temps[3] * 10)
+			temperatures.HotTankMiddle = int16(temps[4] * 10)
+			temperatures.HotTankBottom = int16(temps[5] * 10)
+		}
 
 		//		esp2.readTemperatures()
-		temps = esp2.getTemperatures()
-		temperatures.ColdTankBottom = int16(temps[0] * 10)
-		temperatures.ColdTankTop = int16(temps[1] * 10)
-		temperatures.ColdTankMiddle = int16(temps[2] * 10)
-		temperatures.MatsInput = int16(temps[3] * 10)
-		temperatures.MatsOutput = int16(temps[4] * 10)
-		temperatures.DehumidifierOutput = int16(temps[5] * 10)
+		if esp2 != nil {
+			temps := esp2.getTemperatures()
+			temperatures.ColdTankBottom = int16(temps[0] * 10)
+			temperatures.ColdTankTop = int16(temps[1] * 10)
+			temperatures.ColdTankMiddle = int16(temps[2] * 10)
+			temperatures.MatsInput = int16(temps[3] * 10)
+			temperatures.MatsOutput = int16(temps[4] * 10)
+			temperatures.DehumidifierOutput = int16(temps[5] * 10)
+		}
 
 		//		esp3.readTemperatures()
-		temps = esp3.getTemperatures()
-		temperatures.GroundLoopIn = int16(temps[0] * 10)
-		temperatures.ToHouse = int16(temps[1] * 10)
-		temperatures.FromHouse = int16(temps[2] * 10)
-		temperatures.Bypass = int16(temps[3] * 10)
-		temperatures.GroundLoopOut = int16(temps[4] * 10)
-		temperatures.ChillerOut = int16(temps[5] * 10)
+		if esp3 != nil {
+			temps := esp3.getTemperatures()
+			temperatures.GroundLoopIn = int16(temps[0] * 10)
+			temperatures.ToHouse = int16(temps[1] * 10)
+			temperatures.FromHouse = int16(temps[2] * 10)
+			temperatures.Bypass = int16(temps[3] * 10)
+			temperatures.GroundLoopOut = int16(temps[4] * 10)
+			temperatures.ChillerOut = int16(temps[5] * 10)
+		}
 
 		// Signal the solar pump controller that we have new values
 		solarTemps := new(SolarTemps)
@@ -585,11 +613,94 @@ func GetTemperatures() {
 			temperatures.MatsOutput, temperatures.DehumidifierOutput); err != nil {
 			log.Print(err)
 		}
-		go esp1.readTemperatures()
-		go esp2.readTemperatures()
-		go esp3.readTemperatures()
-
+		if esp1 != nil {
+			go esp1.readTemperatures()
+		}
+		if esp2 != nil {
+			go esp2.readTemperatures()
+		}
+		if esp3 != nil {
+			go esp3.readTemperatures()
+		}
 	}
+}
+
+// inverterConfigs turns a comma separated list of IP addresses into one EG4.Config
+// per inverter, named XP-1, XP-2, ... in list order. Each uses Modbus TCP port 502
+// and unit ID 1.
+func inverterConfigs(list string) ([]EG4.Config, error) {
+	const modbusPort = "502"
+	const unitID = 1
+	var cfgs []EG4.Config
+	for _, ip := range strings.Split(list, ",") {
+		ip = strings.TrimSpace(ip)
+		if ip == "" {
+			continue
+		}
+		if net.ParseIP(ip) == nil {
+			return nil, fmt.Errorf("invalid inverter IP address %q", ip)
+		}
+		cfgs = append(cfgs, EG4.Config{
+			Name:    fmt.Sprintf("XP-%d", len(cfgs)+1),
+			Address: net.JoinHostPort(ip, modbusPort),
+			UnitID:  unitID,
+		})
+	}
+	if len(cfgs) == 0 {
+		return nil, errors.New("no inverter IP addresses given (-inverters)")
+	}
+	return cfgs, nil
+}
+
+// A polling loop to read the EG4 12000XP inverters
+func Read12000XP() {
+	cfgs, err := inverterConfigs(inverterIPs)
+	if err != nil {
+		log.Fatal(err)
+	}
+	sys, err := EG4.NewSystem(cfgs...)
+	if err != nil {
+		log.Fatal(err)
+	}
+	defer sys.Close()
+
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt)
+	defer stop()
+
+	// Send the output to Stdout
+	enc := json.NewEncoder(os.Stdout)
+	tick := time.NewTicker(every)
+	defer tick.Stop()
+	for {
+		pollCtx, cancel := context.WithTimeout(ctx, every)
+		sr, err := sys.Read(pollCtx)
+		cancel()
+		if err != nil {
+			log.Printf("poll failed: %v", err)
+		} else {
+			for name, e := range sr.Errors {
+				log.Printf("%s: %v", name, e)
+			}
+			_ = enc.Encode(sr.Summary())
+			if pDB == nil {
+				if pDB, err = connectToDatabase(); err != nil {
+					log.Println("Error opening the database ", err)
+					pDB = nil
+				}
+			}
+			if pDB != nil {
+				if err := logEG4(pDB, sr); err != nil {
+					log.Printf("Error writing EG4 values to the database - %s", err)
+				}
+			}
+		}
+		select {
+		case <-ctx.Done():
+			return
+		case <-tick.C:
+		}
+	}
+
 }
 
 func main() {
@@ -630,14 +741,25 @@ func main() {
 	go ManageCpuTemp()
 	log.Println("********** CPU Temperature manager started. *********")
 
+	go Read12000XP()
+
 	//	go LogPumps()
 
 	for {
 		if time.Since(t) > time.Second {
+			if verbose {
+				log.Printf("Tesla 1 second loop - linkReadyNum == %d : slaves = %d\n", linkReadyNum, len(slaves))
+			}
 			if linkReadyNum > 5 {
+				if verbose {
+					log.Print("Sending LinkReady1")
+				}
 				msg.SendMasterLinkReady1(uint16(masterAddress))
 				linkReadyNum--
 			} else if linkReadyNum > 0 {
+				if verbose {
+					log.Print("Sending LinkReady2")
+				}
 				msg.SendMasterLinkReady2(uint16(masterAddress))
 				linkReadyNum--
 			}
@@ -660,7 +782,7 @@ func main() {
 				}
 				break
 			} else {
-				//				fmt.Printf("-%02x", buf[0])
+				//				log.Printf("-%02x", buf[0])
 				bGotMessage, err := msg.AddByte(buf[0])
 				if err != nil {
 					log.Print(err)
@@ -686,7 +808,6 @@ func main() {
 		if s != nil {
 			slaves = s
 		}
-		//		log.Println("Tesla loop")
 		time.Sleep(100 * time.Millisecond)
 	}
 }

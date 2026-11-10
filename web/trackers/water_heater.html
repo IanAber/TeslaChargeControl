@@ -166,7 +166,7 @@
                     alert('Heater Fetch Error :-S' + err.message);
 		}
             });
-    };
+    }
 	
     function getVoltage() {
 	fetch(buildVoltageURL())
@@ -195,7 +195,7 @@
                     alert('Voltage Fetch Error :-S' + err.message);
                 }
             });
-    };
+    }
 	
     function goBack() {
         window.clearInterval(VoltageTimeOut);
@@ -215,7 +215,7 @@
 </head>
     <body style="background:white;">
         <div id='heaterChartContainer' style="width:100%; height: 48%" ></div>
-        <div id='voltsChartContainer' style="width:100%; height: 48%" /></div>
+        <div id='voltsChartContainer' style="width:100%; height: 48%"></div>
         <div style="text-align:center; width:100%; height: 4%">
             <button onClick="goBack()" style="width:50%;height:100%" >Back</button>
             <select id="timeRange" onchange="updateValues()">
