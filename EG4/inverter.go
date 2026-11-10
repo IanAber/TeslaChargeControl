@@ -102,7 +102,8 @@ type Reading struct {
 	ChargePower       int     // W into battery
 	DischargePower    int     // W out of battery
 	BatteryPower      int     // W, + charging / - discharging
-	BatteryCurrentBMS float64 // A, + charging / - discharging (BMS-reported)
+	BatteryCurrent    float64 // A, this inverter's share: BatteryPower / BatteryVoltage
+	BatteryCurrentBMS float64 // A, + charging / - discharging (BMS-reported, whole bank)
 
 	// Grid / AC input
 	GridVoltage     float64 // V, L1-L2
@@ -209,6 +210,10 @@ func Decode(raw [inputSpan]uint16) *Reading {
 	r.SOH = int(raw[5] >> 8)
 	r.ChargePower, r.DischargePower = u(10), u(11)
 	r.BatteryPower = r.ChargePower - r.DischargePower
+	if r.BatteryVoltage > 0 {
+		// No register gives the inverter's own battery current, so derive it.
+		r.BatteryCurrent = float64(r.BatteryPower) / r.BatteryVoltage
+	}
 	r.BatteryCurrentBMS = ds(98, 10)
 
 	r.GridVoltage = d(12, 10)

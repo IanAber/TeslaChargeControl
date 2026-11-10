@@ -88,6 +88,24 @@ type SystemReading struct {
 	SOC            float64 // %
 	SOH            int     // %, 0 when no inverter reports it
 
+	// BMS values. There is one battery bank, so every inverter reports the
+	// same BMS data; these are taken from BMSSource.
+	BMSSource                string  // name of the inverter the BMS values came from
+	BatteryCurrentBMS        float64 // A, + charging / - discharging
+	BMSChargeCurrentLimit    float64 // A
+	BMSDischargeCurrentLimit float64 // A
+	BMSChargeVoltage         float64 // V
+	BMSDischargeCutoff       float64 // V
+	BMSMaxCellVoltage        float64 // V
+	BMSMinCellVoltage        float64 // V
+	BMSMaxCellTemp           float64 // °C
+	BMSMinCellTemp           float64 // °C
+	BMSCycleCount            int
+	BatteryParallelCount     int
+	BatteryCapacityAh        int
+	BMSFaultCode             uint16
+	BMSWarningCode           uint16
+
 	AnyFault bool
 }
 
@@ -159,7 +177,35 @@ func (s *System) Read(ctx context.Context) (*SystemReading, error) {
 		sr.SOH = (sohSum + sohN/2) / sohN
 	}
 	sr.BatteryPower = sr.ChargePower - sr.DischargePower
+	sr.setBMS()
 	return sr, nil
+}
+
+// setBMS copies the BMS values from the parallel master if it answered,
+// otherwise from the first inverter that did.
+func (sr *SystemReading) setBMS() {
+	b := sr.Units[0]
+	for _, r := range sr.Units {
+		if r.ParallelRole == 1 {
+			b = r
+			break
+		}
+	}
+	sr.BMSSource = b.Name
+	sr.BatteryCurrentBMS = b.BatteryCurrentBMS
+	sr.BMSChargeCurrentLimit = b.BMSChargeCurrentLimit
+	sr.BMSDischargeCurrentLimit = b.BMSDischargeCurrentLimit
+	sr.BMSChargeVoltage = b.BMSChargeVoltage
+	sr.BMSDischargeCutoff = b.BMSDischargeCutoff
+	sr.BMSMaxCellVoltage = b.BMSMaxCellVoltage
+	sr.BMSMinCellVoltage = b.BMSMinCellVoltage
+	sr.BMSMaxCellTemp = b.BMSMaxCellTemp
+	sr.BMSMinCellTemp = b.BMSMinCellTemp
+	sr.BMSCycleCount = b.BMSCycleCount
+	sr.BatteryParallelCount = b.BatteryParallelCount
+	sr.BatteryCapacityAh = b.BatteryCapacityAh
+	sr.BMSFaultCode = b.BMSFaultCode
+	sr.BMSWarningCode = b.BMSWarningCode
 }
 
 // summary drops the raw register arrays so each poll prints on one readable line.

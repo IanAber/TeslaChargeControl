@@ -35,6 +35,23 @@ CREATE TABLE IF NOT EXISTS logging.eg4_system (
     ac_charge_energy_today   DECIMAL(8,1)    NOT NULL,
     gen_energy_today         DECIMAL(8,1)    NOT NULL,
 
+    -- BMS (one battery bank, so taken from one inverter: the parallel master if it answered)
+    bms_source                  VARCHAR(16)  NOT NULL,           -- inverter the BMS values came from
+    battery_current_bms         DECIMAL(6,1) NOT NULL,           -- + charging / - discharging
+    bms_charge_current_limit    DECIMAL(6,1) NOT NULL,
+    bms_discharge_current_limit DECIMAL(6,1) NOT NULL,
+    bms_charge_voltage          DECIMAL(5,1) NOT NULL,
+    bms_discharge_cutoff        DECIMAL(5,1) NOT NULL,
+    bms_max_cell_voltage        DECIMAL(5,3) NOT NULL,
+    bms_min_cell_voltage        DECIMAL(5,3) NOT NULL,
+    bms_max_cell_temp           DECIMAL(5,1) NOT NULL,
+    bms_min_cell_temp           DECIMAL(5,1) NOT NULL,
+    bms_cycle_count             INT UNSIGNED NOT NULL,
+    battery_parallel_count      SMALLINT UNSIGNED NOT NULL,
+    battery_capacity_ah         INT UNSIGNED NOT NULL,
+    bms_fault_code              SMALLINT UNSIGNED NOT NULL,
+    bms_warning_code            SMALLINT UNSIGNED NOT NULL,
+
     PRIMARY KEY (id),
     KEY idx_eg4_system_logged (logged)
 ) ENGINE = InnoDB;
@@ -56,11 +73,11 @@ CREATE TABLE IF NOT EXISTS logging.eg4_inverter (
     pv2_power                INT             NOT NULL,
     pv_power                 INT             NOT NULL,
 
-    -- Battery (voltage, SOC and SOH are in eg4_system)
+    -- Battery (voltage, SOC, SOH and BMS values are in eg4_system)
     charge_power             INT             NOT NULL,
     discharge_power          INT             NOT NULL,
     battery_power            INT             NOT NULL,           -- + charging / - discharging
-    battery_current_bms      DECIMAL(6,1)    NOT NULL,           -- + charging / - discharging
+    battery_current          DECIMAL(6,1)    NOT NULL,           -- battery_power / battery voltage, + charging
 
     -- Inverter / EPS output
     inverter_power           INT             NOT NULL,
@@ -108,21 +125,6 @@ CREATE TABLE IF NOT EXISTS logging.eg4_inverter (
     radiator1_temp           SMALLINT        NOT NULL,
     radiator2_temp           SMALLINT        NOT NULL,
     running_time             INT UNSIGNED    NOT NULL,           -- seconds
-
-    -- BMS
-    bms_charge_current_limit    DECIMAL(6,1) NOT NULL,
-    bms_discharge_current_limit DECIMAL(6,1) NOT NULL,
-    bms_charge_voltage          DECIMAL(5,1) NOT NULL,
-    bms_discharge_cutoff        DECIMAL(5,1) NOT NULL,
-    bms_max_cell_voltage        DECIMAL(5,3) NOT NULL,
-    bms_min_cell_voltage        DECIMAL(5,3) NOT NULL,
-    bms_max_cell_temp           DECIMAL(5,1) NOT NULL,
-    bms_min_cell_temp           DECIMAL(5,1) NOT NULL,
-    bms_cycle_count             INT UNSIGNED NOT NULL,
-    battery_parallel_count      SMALLINT UNSIGNED NOT NULL,
-    battery_capacity_ah         INT UNSIGNED NOT NULL,
-    bms_fault_code              SMALLINT UNSIGNED NOT NULL,
-    bms_warning_code            SMALLINT UNSIGNED NOT NULL,
 
     -- Parallel
     parallel_role            TINYINT UNSIGNED NOT NULL,          -- 0 standalone, 1 master, 2 slave

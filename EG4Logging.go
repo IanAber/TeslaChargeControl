@@ -3,14 +3,35 @@ package main
 import (
 	"database/sql"
 	"fmt"
+	"strings"
 
 	"SystemController/EG4"
 )
 
+// col pairs a database column with the value written to it, so the column
+// list, placeholders and values of an INSERT cannot get out of step.
+type col struct {
+	name  string
+	value any
+}
+
+// insert builds and runs "INSERT INTO table (cols...) VALUES (?,...)".
+func insert(tx *sql.Tx, table string, cols []col) (sql.Result, error) {
+	names := make([]string, len(cols))
+	values := make([]any, len(cols))
+	for i, c := range cols {
+		names[i] = c.name
+		values[i] = c.value
+	}
+	q := fmt.Sprintf("INSERT INTO %s (%s) VALUES (%s)", table,
+		strings.Join(names, ", "), strings.TrimSuffix(strings.Repeat("?,", len(cols)), ","))
+	return tx.Exec(q, values...)
+}
+
 // logEG4 writes one poll of the EG4 system to the database: a row in eg4_system
-// for the combined values and a row in eg4_inverter for each inverter that
-// answered. Both are written in one transaction so a poll is never half logged.
-// The tables are defined in EG4/eg4_tables.sql.
+// for the combined values and the shared battery/BMS, and a row in eg4_inverter
+// for each inverter that answered. Both are written in one transaction so a
+// poll is never half logged. The tables are defined in EG4/eg4_tables.sql.
 func logEG4(db *sql.DB, sr *EG4.SystemReading) error {
 	tx, err := db.Begin()
 	if err != nil {
@@ -24,24 +45,51 @@ func logEG4(db *sql.DB, sr *EG4.SystemReading) error {
 		soh = sql.NullInt64{Int64: int64(sr.SOH), Valid: true}
 	}
 
-	res, err := tx.Exec(`INSERT INTO logging.eg4_system (logged, complete, units, any_fault,
-                                  pv_power, load_power, eps_power, inverter_power, charge_power, discharge_power,
-                                  battery_power, ac_charge_power, ac_couple_power, gen_power,
-                                  battery_voltage, soc, soh,
-                                  pv_energy_today, load_energy_today, eps_energy_today, charge_energy_today,
-                                  discharge_energy_today, ac_charge_energy_today, gen_energy_today)
-                         VALUES (?,?,?,?,
-                                 ?,?,?,?,?,?,
-                                 ?,?,?,?,
-                                 ?,?,?,
-                                 ?,?,?,?,
-                                 ?,?,?)`,
-		sr.Time, sr.Complete, len(sr.Units), sr.AnyFault,
-		sr.PVPower, sr.LoadPower, sr.EPSPower, sr.InverterPower, sr.ChargePower, sr.DischargePower,
-		sr.BatteryPower, sr.ACChargePower, sr.ACCouplePower, sr.GenPower,
-		sr.BatteryVoltage, sr.SOC, soh,
-		sr.PVEnergyToday, sr.LoadEnergyToday, sr.EPSEnergyToday, sr.ChargeEnergyToday,
-		sr.DischargeEnergyToday, sr.ACChargeEnergyToday, sr.GenEnergyToday)
+	res, err := insert(tx, "logging.eg4_system", []col{
+		{"logged", sr.Time},
+		{"complete", sr.Complete},
+		{"units", len(sr.Units)},
+		{"any_fault", sr.AnyFault},
+
+		{"pv_power", sr.PVPower},
+		{"load_power", sr.LoadPower},
+		{"eps_power", sr.EPSPower},
+		{"inverter_power", sr.InverterPower},
+		{"charge_power", sr.ChargePower},
+		{"discharge_power", sr.DischargePower},
+		{"battery_power", sr.BatteryPower},
+		{"ac_charge_power", sr.ACChargePower},
+		{"ac_couple_power", sr.ACCouplePower},
+		{"gen_power", sr.GenPower},
+
+		{"battery_voltage", sr.BatteryVoltage},
+		{"soc", sr.SOC},
+		{"soh", soh},
+
+		{"pv_energy_today", sr.PVEnergyToday},
+		{"load_energy_today", sr.LoadEnergyToday},
+		{"eps_energy_today", sr.EPSEnergyToday},
+		{"charge_energy_today", sr.ChargeEnergyToday},
+		{"discharge_energy_today", sr.DischargeEnergyToday},
+		{"ac_charge_energy_today", sr.ACChargeEnergyToday},
+		{"gen_energy_today", sr.GenEnergyToday},
+
+		{"bms_source", sr.BMSSource},
+		{"battery_current_bms", sr.BatteryCurrentBMS},
+		{"bms_charge_current_limit", sr.BMSChargeCurrentLimit},
+		{"bms_discharge_current_limit", sr.BMSDischargeCurrentLimit},
+		{"bms_charge_voltage", sr.BMSChargeVoltage},
+		{"bms_discharge_cutoff", sr.BMSDischargeCutoff},
+		{"bms_max_cell_voltage", sr.BMSMaxCellVoltage},
+		{"bms_min_cell_voltage", sr.BMSMinCellVoltage},
+		{"bms_max_cell_temp", sr.BMSMaxCellTemp},
+		{"bms_min_cell_temp", sr.BMSMinCellTemp},
+		{"bms_cycle_count", sr.BMSCycleCount},
+		{"battery_parallel_count", sr.BatteryParallelCount},
+		{"battery_capacity_ah", sr.BatteryCapacityAh},
+		{"bms_fault_code", sr.BMSFaultCode},
+		{"bms_warning_code", sr.BMSWarningCode},
+	})
 	if err != nil {
 		return fmt.Errorf("eg4_system: %w", err)
 	}
@@ -51,54 +99,73 @@ func logEG4(db *sql.DB, sr *EG4.SystemReading) error {
 	}
 
 	for _, r := range sr.Units {
-		if _, err := tx.Exec(`INSERT INTO logging.eg4_inverter (system_id, logged, name, status, status_text,
-                                  pv1_voltage, pv1_current, pv1_power, pv2_voltage, pv2_current, pv2_power, pv_power,
-                                  charge_power, discharge_power, battery_power, battery_current_bms,
-                                  inverter_power, eps_voltage, eps_frequency, eps_power, eps_apparent_power,
-                                  eps_l1_voltage, eps_l2_voltage, eps_l1_power, eps_l2_power, load_power,
-                                  ac_couple_power, ac_charge_power, ac_input_is_gen,
-                                  gen_voltage, gen_frequency, gen_l1_voltage, gen_l2_voltage, gen_power,
-                                  pv_energy_today, load_energy_today, eps_energy_today, charge_energy_today,
-                                  discharge_energy_today, ac_charge_energy_today, gen_energy_today,
-                                  pv_energy_total, load_energy_total, eps_energy_total, charge_energy_total,
-                                  discharge_energy_total, gen_energy_total,
-                                  fault_code, warning_code, internal_temp, radiator1_temp, radiator2_temp, running_time,
-                                  bms_charge_current_limit, bms_discharge_current_limit, bms_charge_voltage, bms_discharge_cutoff,
-                                  bms_max_cell_voltage, bms_min_cell_voltage, bms_max_cell_temp, bms_min_cell_temp,
-                                  bms_cycle_count, battery_parallel_count, battery_capacity_ah, bms_fault_code, bms_warning_code,
-                                  parallel_role, parallel_phase, parallel_count)
-                         VALUES (?,?,?,?,?,
-                                 ?,?,?,?,?,?,?,
-                                 ?,?,?,?,
-                                 ?,?,?,?,?,
-                                 ?,?,?,?,?,
-                                 ?,?,?,
-                                 ?,?,?,?,?,
-                                 ?,?,?,?,
-                                 ?,?,?,
-                                 ?,?,?,?,
-                                 ?,?,
-                                 ?,?,?,?,?,?,
-                                 ?,?,?,?,
-                                 ?,?,?,?,
-                                 ?,?,?,?,?,
-                                 ?,?,?)`,
-			systemID, r.Time, r.Name, r.Status, r.StatusText,
-			r.PV1Voltage, r.PV1Current, r.PV1Power, r.PV2Voltage, r.PV2Current, r.PV2Power, r.PVPower,
-			r.ChargePower, r.DischargePower, r.BatteryPower, r.BatteryCurrentBMS,
-			r.InverterPower, r.EPSVoltage, r.EPSFrequency, r.EPSPower, r.EPSApparentPower,
-			r.EPSL1Voltage, r.EPSL2Voltage, r.EPSL1Power, r.EPSL2Power, r.LoadPower,
-			r.ACCouplePower, r.ACChargePower, r.ACInputIsGen,
-			r.GenVoltage, r.GenFrequency, r.GenL1Voltage, r.GenL2Voltage, r.GenPower,
-			r.PVEnergyToday, r.LoadEnergyToday, r.EPSEnergyToday, r.ChargeEnergyToday,
-			r.DischargeEnergyToday, r.ACChargeEnergyToday, r.GenEnergyToday,
-			r.PVEnergyTotal, r.LoadEnergyTotal, r.EPSEnergyTotal, r.ChargeEnergyTotal,
-			r.DischargeEnergyTotal, r.GenEnergyTotal,
-			r.FaultCode, r.WarningCode, r.InternalTemp, r.Radiator1Temp, r.Radiator2Temp, int64(r.RunningTime.Seconds()),
-			r.BMSChargeCurrentLimit, r.BMSDischargeCurrentLimit, r.BMSChargeVoltage, r.BMSDischargeCutoff,
-			r.BMSMaxCellVoltage, r.BMSMinCellVoltage, r.BMSMaxCellTemp, r.BMSMinCellTemp,
-			r.BMSCycleCount, r.BatteryParallelCount, r.BatteryCapacityAh, r.BMSFaultCode, r.BMSWarningCode,
-			r.ParallelRole, r.ParallelPhase, r.ParallelCount); err != nil {
+		_, err := insert(tx, "logging.eg4_inverter", []col{
+			{"system_id", systemID},
+			{"logged", r.Time},
+			{"name", r.Name},
+			{"status", r.Status},
+			{"status_text", r.StatusText},
+
+			{"pv1_voltage", r.PV1Voltage},
+			{"pv1_current", r.PV1Current},
+			{"pv1_power", r.PV1Power},
+			{"pv2_voltage", r.PV2Voltage},
+			{"pv2_current", r.PV2Current},
+			{"pv2_power", r.PV2Power},
+			{"pv_power", r.PVPower},
+
+			{"charge_power", r.ChargePower},
+			{"discharge_power", r.DischargePower},
+			{"battery_power", r.BatteryPower},
+			{"battery_current", r.BatteryCurrent},
+
+			{"inverter_power", r.InverterPower},
+			{"eps_voltage", r.EPSVoltage},
+			{"eps_frequency", r.EPSFrequency},
+			{"eps_power", r.EPSPower},
+			{"eps_apparent_power", r.EPSApparentPower},
+			{"eps_l1_voltage", r.EPSL1Voltage},
+			{"eps_l2_voltage", r.EPSL2Voltage},
+			{"eps_l1_power", r.EPSL1Power},
+			{"eps_l2_power", r.EPSL2Power},
+			{"load_power", r.LoadPower},
+
+			{"ac_couple_power", r.ACCouplePower},
+			{"ac_charge_power", r.ACChargePower},
+			{"ac_input_is_gen", r.ACInputIsGen},
+			{"gen_voltage", r.GenVoltage},
+			{"gen_frequency", r.GenFrequency},
+			{"gen_l1_voltage", r.GenL1Voltage},
+			{"gen_l2_voltage", r.GenL2Voltage},
+			{"gen_power", r.GenPower},
+
+			{"pv_energy_today", r.PVEnergyToday},
+			{"load_energy_today", r.LoadEnergyToday},
+			{"eps_energy_today", r.EPSEnergyToday},
+			{"charge_energy_today", r.ChargeEnergyToday},
+			{"discharge_energy_today", r.DischargeEnergyToday},
+			{"ac_charge_energy_today", r.ACChargeEnergyToday},
+			{"gen_energy_today", r.GenEnergyToday},
+
+			{"pv_energy_total", r.PVEnergyTotal},
+			{"load_energy_total", r.LoadEnergyTotal},
+			{"eps_energy_total", r.EPSEnergyTotal},
+			{"charge_energy_total", r.ChargeEnergyTotal},
+			{"discharge_energy_total", r.DischargeEnergyTotal},
+			{"gen_energy_total", r.GenEnergyTotal},
+
+			{"fault_code", r.FaultCode},
+			{"warning_code", r.WarningCode},
+			{"internal_temp", r.InternalTemp},
+			{"radiator1_temp", r.Radiator1Temp},
+			{"radiator2_temp", r.Radiator2Temp},
+			{"running_time", int64(r.RunningTime.Seconds())},
+
+			{"parallel_role", r.ParallelRole},
+			{"parallel_phase", r.ParallelPhase},
+			{"parallel_count", r.ParallelCount},
+		})
+		if err != nil {
 			return fmt.Errorf("eg4_inverter %s: %w", r.Name, err)
 		}
 	}
