@@ -125,12 +125,17 @@ type Reading struct {
 	LoadPower        int     // W (input 170)
 	ACCouplePower    int     // W (input 153)
 
-	// Generator
+	// Generator. The 12000XP takes the generator on its AC input, so when
+	// ACInputIsGen is set the power and energy come from the AC input
+	// registers (27, 37, 58-59); otherwise they are 0. Inputs 123-126, the
+	// LuxPower generator power/energy registers, hold unrelated values on the
+	// 12000XP and are not used. Voltage and frequency use the generator
+	// registers (121, 122) and fall back to the AC input's when those read 0.
 	GenVoltage   float64 // V
 	GenFrequency float64 // Hz
-	GenL1Voltage float64 // V
-	GenL2Voltage float64 // V
-	GenPower     int     // W (input 123)
+	GenL1Voltage float64 // V (input 195)
+	GenL2Voltage float64 // V (input 196)
+	GenPower     int     // W
 
 	// Energy today, kWh
 	PVEnergyToday         float64
@@ -140,7 +145,7 @@ type Reading struct {
 	EPSEnergyToday        float64
 	GridImportEnergyToday float64
 	LoadEnergyToday       float64
-	GenEnergyToday        float64 // input 124
+	GenEnergyToday        float64 // AC input energy today when ACInputIsGen
 
 	// Lifetime energy, kWh
 	PVEnergyTotal         float64
@@ -149,7 +154,7 @@ type Reading struct {
 	EPSEnergyTotal        float64
 	GridImportEnergyTotal float64
 	LoadEnergyTotal       float64
-	GenEnergyTotal        float64 // input 125-126
+	GenEnergyTotal        float64 // AC input lifetime energy when ACInputIsGen
 
 	// Health
 	FaultCode      uint32
@@ -236,9 +241,6 @@ func Decode(raw [inputSpan]uint16) *Reading {
 	r.GenVoltage = d(121, 10)
 	r.GenFrequency = d(122, 100)
 	r.GenL1Voltage, r.GenL2Voltage = d(195, 10), d(196, 10)
-	r.GenPower = u(123)
-	r.GenEnergyToday = d(124, 10)
-	r.GenEnergyTotal = e32(125)
 
 	r.PVEnergyToday = d(28, 10) + d(29, 10)
 	r.ACChargeEnergyToday = d(32, 10)
@@ -254,6 +256,19 @@ func Decode(raw [inputSpan]uint16) *Reading {
 	r.EPSEnergyTotal = e32(54)
 	r.GridImportEnergyTotal = e32(58)
 	r.LoadEnergyTotal = e32(172)
+
+	// See the Generator fields in Reading for why these come from the AC input.
+	if r.ACInputIsGen {
+		r.GenPower = r.GridImportPower
+		r.GenEnergyToday = r.GridImportEnergyToday
+		r.GenEnergyTotal = r.GridImportEnergyTotal
+		if r.GenVoltage == 0 {
+			r.GenVoltage = r.GridVoltage
+		}
+		if r.GenFrequency == 0 {
+			r.GenFrequency = r.GridFrequency
+		}
+	}
 
 	r.FaultCode = u32(60)
 	r.WarningCode = u32(62)
