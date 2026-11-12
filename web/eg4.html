@@ -177,6 +177,8 @@ details summary { cursor: pointer; color: var(--text-secondary); font-size: 13px
       <button type="button" data-min="15">15 min</button>
       <button type="button" data-min="60">1 hour</button>
       <button type="button" data-min="120">2 hours</button>
+      <button type="button" data-min="360">6 hours</button>
+      <button type="button" data-min="1440">24 hours</button>
     </div>
     <label id="histNote"></label>
   </div>
@@ -217,12 +219,13 @@ details summary { cursor: pointer; color: var(--text-secondary); font-size: 13px
 (function () {
   "use strict";
 
-  const API = "/realtime/getEG4";
-  const POLL_MS = 5000;           // the server polls the inverters every 10 s
-  const KEEP_MS = 2 * 3600 * 1000; // history kept in the browser
-  const STALE_S = 30;
-  const STORE_KEY = "eg4-history-v1";
+  const API_LATEST = "/realtime/getEG4";         // latest reading (fallback when streaming is unavailable)
+  const API_EVENTS = "/realtime/eg4Events";      // Server-Sent Events: a reading each time the controller polls
+  const API_HISTORY = "/realtime/getEG4History"; // logged readings from the database
+  const FALLBACK_POLL_MS = 5000;
+  const STALE_S = 30;   // the controller polls the inverters every 10 s
   const WIN_KEY = "eg4-window-v1";
+  const WINDOWS = [5, 15, 60, 120, 360, 1440];
   const SVGNS = "http://www.w3.org/2000/svg";
 
   // ---------- small helpers ----------
@@ -255,12 +258,11 @@ details summary { cursor: pointer; color: var(--text-secondary); font-size: 13px
   function unitColor(i) { return unitColors[i % unitColors.length]; }
 
   // ---------- history ----------
+  // Loaded from the database for the chosen window, then extended with each
+  // reading the controller pushes.
   let history = [];   // [{t, pv, ac, load, soc, v, a, units: {name: {pv, ac, load, a}}}]
   let unitNames = [];
-  try {
-    const saved = JSON.parse(localStorage.getItem(STORE_KEY) || "[]");
-    if (Array.isArray(saved)) history = saved.filter((s) => s && typeof s.t === "number" && s.units).sort((a, b) => a.t - b.t);
-  } catch (e) { /* storage unavailable: start empty */ }
+  let bucketMs = 10000; // averaging bucket of the loaded history
 
   // Keeps history in time order even if the controller's clock steps back.
   function addSample(s) {
@@ -270,9 +272,6 @@ details summary { cursor: pointer; color: var(--text-secondary); font-size: 13px
     else history.splice(i, 0, s);
   }
 
-  function save() {
-    try { localStorage.setItem(STORE_KEY, JSON.stringify(history)); } catch (e) { /* ignore */ }
-  }
   function refreshUnitNames() {
     const set = new Set();
     for (const s of history) for (const n in s.units) set.add(n);
@@ -281,7 +280,7 @@ details summary { cursor: pointer; color: var(--text-secondary); font-size: 13px
   refreshUnitNames();
 
   let windowMin = 15;
-  try { const w = parseInt(localStorage.getItem(WIN_KEY), 10); if ([5, 15, 60, 120].includes(w)) windowMin = w; } catch (e) {}
+  try { const w = parseInt(localStorage.getItem(WIN_KEY), 10); if (WINDOWS.includes(w)) windowMin = w; } catch (e) {}
 
   // ---------- line chart ----------
   function niceStep(span, count) {
@@ -362,7 +361,7 @@ details summary { cursor: pointer; color: var(--text-secondary); font-size: 13px
     }
     // x ticks
     const spanMin = (t1 - t0) / 60000;
-    const xStepMin = spanMin <= 5 ? 1 : spanMin <= 15 ? 3 : spanMin <= 60 ? 10 : 20;
+    const xStepMin = spanMin <= 5 ? 1 : spanMin <= 15 ? 3 : spanMin <= 60 ? 10 : spanMin <= 120 ? 20 : spanMin <= 360 ? 60 : 180;
     const xStep = xStepMin * 60000;
     for (let t = Math.ceil(t0 / xStep) * xStep; t <= t1; t += xStep) {
       const xx = x(t);
@@ -379,7 +378,7 @@ details summary { cursor: pointer; color: var(--text-secondary); font-size: 13px
     }
 
     // lines; break the line where a value is missing or samples are far apart
-    const gapMs = 45000;
+    const gapMs = Math.max(45000, 3 * bucketMs);
     for (const se of series) {
       let d = "", prevT = null;
       for (const s of data) {
@@ -506,8 +505,6 @@ details summary { cursor: pointer; color: var(--text-secondary); font-size: 13px
     drawLegend("loadLegend", loadSeries());
     drawLegend("battLegend", ampSeries());
     for (const k in charts) charts[k].render(data, t0, t1);
-    const have = history.length ? Math.round((t1 - history[0].t) / 60000) : 0;
-    $("histNote").textContent = have < windowMin ? "(history builds up while this page is open: " + have + " min so far)" : "";
   }
 
   // ---------- flow diagram ----------
@@ -706,47 +703,116 @@ details summary { cursor: pointer; color: var(--text-secondary); font-size: 13px
     s.appendChild(document.createTextNode(text));
   }
 
-  // ---------- polling ----------
-  let lastTime = null, lastOk = null;
 
-  async function poll() {
-    try {
-      const res = await fetch(API, { cache: "no-store" });
-      if (res.status === 503) { setStatus("warn", "Waiting for the first inverter reading"); return; }
-      if (!res.ok) throw new Error("HTTP " + res.status);
-      const sr = await res.json();
-      lastOk = Date.now();
-      const t = Date.parse(sr.Time);
+  // ---------- live readings ----------
+  let lastTime = null;      // controller time of the newest reading shown
+  let lastReceived = null;  // browser time it arrived
 
-      const errs = Object.keys(sr.Errors || {});
-      const box = $("errors"); box.textContent = "";
-      if (errs.length) {
-        box.innerHTML = ICON_WARN;
-        box.appendChild(document.createTextNode("Not answering: " + errs.join(", ") + ". Totals include only the inverters that answered."));
-      }
-      if (sr.AgeSeconds > STALE_S) setStatus("warn", "Last reading " + Math.round(sr.AgeSeconds) + " s ago");
-      else if (errs.length) setStatus("warn", "Updated " + clockS(t) + " · " + errs.length + " inverter" + (errs.length > 1 ? "s" : "") + " not answering");
-      else setStatus("ok", "Updated " + clockS(t));
-
-      renderFlow(sr);
-      renderTable(sr);
-
-      if (t !== lastTime) {
-        lastTime = t;
-        const units = {};
-        for (const u of sr.Units || []) units[u.Name] = { pv: u.PVPower, ac: u.ACCouplePower, load: u.LoadPower, a: Math.round((u.BatteryCurrent || 0) * 10) / 10 };
-        addSample({ t, pv: sr.PVPower, ac: sr.ACCouplePower, load: sr.LoadPower, soc: sr.SOC, v: Math.round((sr.BatteryVoltage || 0) * 100) / 100, a: sr.BatteryCurrentBMS, units });
-        const cut = Date.now() - KEEP_MS;
-        while (history.length && history[0].t < cut) history.shift();
-        refreshUnitNames();
-        save();
-      }
-      renderCharts();
-    } catch (e) {
-      const ago = lastOk ? " (last good reading " + Math.round((Date.now() - lastOk) / 1000) + " s ago)" : "";
-      setStatus("bad", "Cannot reach the controller" + ago);
-      renderCharts();
+  function showReading(sr) {
+    lastReceived = Date.now();
+    const t = Date.parse(sr.Time);
+    const errs = Object.keys(sr.Errors || {});
+    const box = $("errors"); box.textContent = "";
+    if (errs.length) {
+      box.innerHTML = ICON_WARN; // fixed markup only
+      box.appendChild(document.createTextNode("Not answering: " + errs.join(", ") + ". Totals include only the inverters that answered."));
     }
+    lastTime = t;
+    updateStatus(errs.length);
+    renderFlow(sr);
+    renderTable(sr);
+
+    const units = {};
+    for (const u of sr.Units || []) units[u.Name] = { pv: u.PVPower, ac: u.ACCouplePower, load: u.LoadPower, a: Math.round((u.BatteryCurrent || 0) * 10) / 10 };
+    addSample({ t, pv: sr.PVPower, ac: sr.ACCouplePower, load: sr.LoadPower, soc: sr.SOC, v: Math.round((sr.BatteryVoltage || 0) * 100) / 100, a: sr.BatteryCurrentBMS, units });
+    trimHistory();
+    refreshUnitNames();
+    renderCharts();
+  }
+
+  let lastErrCount = 0, connection = "connecting";
+  function updateStatus(errCount) {
+    if (errCount != null) lastErrCount = errCount;
+    if (connection === "lost") {
+      const ago = lastReceived ? " (last reading " + Math.round((Date.now() - lastReceived) / 1000) + " s ago)" : "";
+      setStatus("bad", "Connection to the controller lost, reconnecting" + ago);
+    } else if (lastReceived == null) {
+      setStatus("warn", "Waiting for the first inverter reading");
+    } else if ((Date.now() - lastReceived) / 1000 > STALE_S) {
+      setStatus("warn", "No new reading for " + Math.round((Date.now() - lastReceived) / 1000) + " s");
+    } else if (lastErrCount) {
+      setStatus("warn", "Updated " + clockS(lastTime) + " · " + lastErrCount + " inverter" + (lastErrCount > 1 ? "s" : "") + " not answering");
+    } else {
+      setStatus("ok", "Updated " + clockS(lastTime));
+    }
+  }
+
+  function trimHistory() {
+    const newest = history.length ? history[history.length - 1].t : Date.now();
+    const cut = Math.max(Date.now(), newest) - windowMin * 60000 - 60000;
+    while (history.length && history[0].t < cut) history.shift();
+  }
+
+  // Loads the logged history for the current window from the database and
+  // keeps any live readings newer than it.
+  let historyReq = 0;
+  async function loadHistory() {
+    const req = ++historyReq;
+    try {
+      const res = await fetch(API_HISTORY + "?minutes=" + windowMin, { cache: "no-store" });
+      if (!res.ok) throw new Error("HTTP " + res.status);
+      const body = await res.json();
+      if (req !== historyReq) return; // a newer request has replaced this one
+      const loaded = (body.samples || []).filter((s) => s && typeof s.t === "number" && s.units);
+      const lastLoaded = loaded.length ? loaded[loaded.length - 1].t : 0;
+      history = loaded.concat(history.filter((s) => s.t > lastLoaded));
+      bucketMs = Math.max(1, body.bucketSeconds || 10) * 1000;
+      $("histNote").textContent = "";
+    } catch (e) {
+      if (req !== historyReq) return;
+      $("histNote").textContent = "(could not load the history from the database; showing live readings only)";
+    }
+    trimHistory();
+    refreshUnitNames();
+    renderCharts();
+  }
+
+  // Live readings arrive as Server-Sent Events. The browser reconnects on its
+  // own after a drop; the history is reloaded then to fill the gap.
+  function connect() {
+    if (!window.EventSource) { fallbackPoll(); return; }
+    const es = new EventSource(API_EVENTS);
+    es.onopen = () => {
+      if (connection === "lost") loadHistory();
+      connection = "open";
+      updateStatus();
+    };
+    es.onmessage = (e) => {
+      try { showReading(JSON.parse(e.data)); } catch (err) { console.error("EG4 event", err); }
+    };
+    es.onerror = () => {
+      connection = "lost";
+      updateStatus();
+    };
+  }
+
+  // Only used by browsers without EventSource.
+  function fallbackPoll() {
+    const poll = async () => {
+      try {
+        const res = await fetch(API_LATEST, { cache: "no-store" });
+        if (res.status === 503) { connection = "open"; updateStatus(); return; }
+        if (!res.ok) throw new Error("HTTP " + res.status);
+        const sr = await res.json();
+        connection = "open";
+        if (Date.parse(sr.Time) !== lastTime) showReading(sr); else updateStatus();
+      } catch (e) {
+        connection = "lost";
+        updateStatus();
+      }
+    };
+    poll();
+    setInterval(poll, FALLBACK_POLL_MS);
   }
 
   // ---------- wiring up ----------
@@ -754,7 +820,9 @@ details summary { cursor: pointer; color: var(--text-secondary); font-size: 13px
     windowMin = min;
     try { localStorage.setItem(WIN_KEY, String(min)); } catch (e) {}
     for (const b of $("windowSel").querySelectorAll("button")) b.setAttribute("aria-pressed", String(+b.dataset.min === min));
+    $("histNote").textContent = "(loading…)";
     renderCharts();
+    loadHistory();
   }
   $("windowSel").addEventListener("click", (e) => { const b = e.target.closest("button"); if (b) setWindow(+b.dataset.min); });
 
@@ -763,8 +831,8 @@ details summary { cursor: pointer; color: var(--text-secondary); font-size: 13px
   let resizeT;
   window.addEventListener("resize", () => { clearTimeout(resizeT); resizeT = setTimeout(() => { buildFlow(); renderCharts(); }, 150); });
   if (window.matchMedia) window.matchMedia("(prefers-color-scheme: dark)").addEventListener("change", renderCharts);
-  poll();
-  setInterval(poll, POLL_MS);
+  connect();
+  setInterval(() => updateStatus(), 5000); // keeps the "no new reading" warning current
 })();
 </script>
 </body>

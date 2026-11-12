@@ -35,6 +35,8 @@ func setUpWebSite() {
 	router.HandleFunc("/realtime/getVoltage", getVoltageData).Methods("GET")
 	router.HandleFunc("/realtime/getactemps", getACTempData).Methods("GET")
 	router.HandleFunc("/realtime/getEG4", getEG4).Methods("GET")
+	router.HandleFunc("/realtime/getEG4History", getEG4History).Methods("GET")
+	router.HandleFunc("/realtime/eg4Events", eg4Events).Methods("GET")
 	router.HandleFunc("/ChargeParams", showChargeParams).Methods("GET")
 	router.HandleFunc("/ChargeParams", saveChargeParams).Methods("POST")
 
