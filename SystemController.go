@@ -682,6 +682,7 @@ func Read12000XP() {
 				log.Printf("%s: %v", name, e)
 			}
 			_ = enc.Encode(sr.Summary())
+			setLatestEG4(sr)
 			if pDB == nil {
 				if pDB, err = connectToDatabase(); err != nil {
 					log.Println("Error opening the database ", err)

@@ -152,12 +152,13 @@ type Reading struct {
 	GenEnergyTotal        float64 // input 125-126
 
 	// Health
-	FaultCode     uint32
-	WarningCode   uint32
-	InternalTemp  int // °C; some 12000XPs always report 0
-	Radiator1Temp int // °C
-	Radiator2Temp int // °C
-	RunningTime   time.Duration
+	FaultCode      uint32
+	WarningCode    uint32
+	InternalTemp   int           // °C; some 12000XPs always report 0
+	Radiator1Temp  int           // °C
+	Radiator2Temp  int           // °C
+	RunningTime    time.Duration `json:"-"`
+	RunningSeconds int64         // RunningTime in seconds, for JSON
 
 	// BMS
 	BMSChargeCurrentLimit    float64 // A
@@ -180,7 +181,7 @@ type Reading struct {
 	ParallelCount int
 
 	// Raw input registers 0-199, for anything not decoded above.
-	Raw [inputSpan]uint16
+	Raw [inputSpan]uint16 `json:"-"`
 }
 
 // HasFault reports whether the inverter or BMS reports a fault code.
@@ -259,6 +260,7 @@ func Decode(raw [inputSpan]uint16) *Reading {
 	r.InternalTemp = s(64)
 	r.Radiator1Temp, r.Radiator2Temp = s(65), s(66)
 	r.RunningTime = time.Duration(u32(69)) * time.Second
+	r.RunningSeconds = int64(u32(69))
 
 	r.BMSChargeCurrentLimit = d(81, 10)
 	r.BMSDischargeCurrentLimit = d(82, 10)
