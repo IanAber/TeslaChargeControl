@@ -881,6 +881,21 @@
 			-o-transform: rotate(0deg);
 			transform: rotate(0deg);
 		}
+		/* EG4 power-flow tile (div#eg4); opens eg4.html when clicked */
+		#eg4 { cursor: pointer; }
+		#eg4 svg { display: block; width: 100%; margin: auto; font-family: sans-serif; }
+		#eg4 .box { fill: #fcfcfb; stroke: #c3c2b7; stroke-width: 1; }
+		#eg4 .active .box { stroke: #2a78d6; stroke-width: 1.5; }
+		#eg4 .name { fill: #52514e; font-size: 11px; text-anchor: middle; }
+		#eg4 .val { fill: #0b0b0b; font-size: 17px; font-weight: bold; text-anchor: middle; }
+		#eg4 .note { fill: #898781; font-size: 10px; text-anchor: middle; }
+		#eg4 .wire { fill: none; stroke: #d6d5cf; stroke-width: 3; }
+		#eg4 .wire.on { stroke: #2a78d6; stroke-dasharray: 2 8; stroke-linecap: round; animation: eg4flow 1s linear infinite; }
+		#eg4 .wire.on.rev { animation-direction: reverse; }
+		#eg4 .socfill { fill: #2a78d6; opacity: 0.18; }
+		#eg4.stale .val { fill: #898781; }
+		@keyframes eg4flow { to { stroke-dashoffset: -10; } }
+		@media (prefers-reduced-motion: reduce) { #eg4 .wire.on { animation: none; stroke-dasharray: none; } }
     </style>
   </head>
   <body>
@@ -965,6 +980,37 @@
         <div class="centered" onclick="window.open('trackers/inverterPower.html')">
           <div id='InverterPower'></div>
         </div>
+          <div class="centered" onclick="window.open('eg4.html')">
+              <div id="eg4" title="EG4 inverters - click for details">
+                <svg viewBox="0 0 200 200" role="img" aria-label="EG4 power flow: solar, battery and load">
+                    <path id="eg4wSolar" class="wire" d="M100 50 V82"/>
+                    <path id="eg4wBatt" class="wire" d="M75 100 H45 V138"/>
+                    <path id="eg4wLoad" class="wire" d="M125 100 H155 V138"/>
+                    <g id="eg4nSolar">
+                        <rect class="box" x="50" y="4" width="100" height="46" rx="6"/>
+                        <text class="name" x="100" y="19">Solar</text>
+                        <text class="val" id="eg4Solar" x="100" y="40">&ndash;</text>
+                    </g>
+                    <g>
+                        <rect class="box" x="75" y="84" width="50" height="32" rx="6"/>
+                        <text class="note" x="100" y="104">Inverters</text>
+                    </g>
+                    <g id="eg4nBatt">
+                        <rect class="box" x="4" y="140" width="82" height="56" rx="6"/>
+                        <rect class="socfill" id="eg4SocFill" x="5" y="195" width="80" height="0" rx="5"/>
+                        <text class="name" x="45" y="154">Battery</text>
+                        <text class="val" id="eg4Soc" x="45" y="174">&ndash;</text>
+                        <text class="note" id="eg4Batt" x="45" y="189"></text>
+                    </g>
+                    <g id="eg4nLoad">
+                        <rect class="box" x="114" y="140" width="82" height="56" rx="6"/>
+                        <text class="name" x="155" y="154">Load</text>
+                        <text class="val" id="eg4Load" x="155" y="174">&ndash;</text>
+                        <text class="note" id="eg4Status" x="155" y="189"></text>
+                    </g>
+                </svg>
+              </div>
+          </div>
       </div>
       <div id='inverterValues' style="display: grid; grid-template-columns: 20% 20% 20% 20% 20%">
         <div class="centered">
@@ -1006,6 +1052,84 @@
 		setUpGauges();
 		getData();
 		getRealTimeData();
+		// ---- EG4 power-flow tile ----
+		// Live readings come from the controller's Server-Sent Events stream
+		// (/realtime/eg4Events); browsers without EventSource poll /realtime/getEG4.
+		var eg4LastSeen = 0;
+
+		function eg4Watts(w) {
+			w = Math.abs(w || 0);
+			return w >= 1000 ? (w / 1000).toFixed(1) + ' kW' : Math.round(w) + ' W';
+		}
+
+		// Shows or hides a wire's moving dots. reverse runs them against the
+		// path's drawn direction; faster dots mean more power.
+		function eg4Wire(id, watts, reverse) {
+			var el = document.getElementById(id);
+			var on = Math.abs(watts) > 20;
+			el.classList.toggle('on', on);
+			el.classList.toggle('rev', on && reverse);
+			el.style.animationDuration = Math.max(0.35, 1.6 - Math.abs(watts) / 8000) + 's';
+		}
+
+		function eg4Show(sr) {
+			eg4LastSeen = Date.now();
+			document.getElementById('eg4').classList.remove('stale');
+			var solar = (sr.PVPower || 0) + (sr.ACCouplePower || 0);
+			var load = sr.LoadPower || 0;
+			var batt = sr.BatteryPower || 0;   // positive while charging
+			var soc = Math.max(0, Math.min(100, sr.SOC || 0));
+
+			document.getElementById('eg4Solar').textContent = eg4Watts(solar);
+			document.getElementById('eg4Load').textContent = eg4Watts(load);
+			document.getElementById('eg4Soc').textContent = Math.round(soc) + '%';
+			document.getElementById('eg4Batt').textContent =
+				Math.abs(batt) <= 20 ? 'Idle' : (batt > 0 ? 'Charging ' : 'Discharging ') + eg4Watts(batt);
+			var fill = document.getElementById('eg4SocFill');
+			fill.setAttribute('height', 54 * soc / 100);
+			fill.setAttribute('y', 195 - 54 * soc / 100);
+
+			var errs = sr.Errors ? Object.keys(sr.Errors) : [];
+			document.getElementById('eg4Status').textContent = errs.length ? errs.join(', ') + ' not answering' : '';
+
+			document.getElementById('eg4nSolar').classList.toggle('active', solar > 20);
+			document.getElementById('eg4nLoad').classList.toggle('active', load > 20);
+			document.getElementById('eg4nBatt').classList.toggle('active', Math.abs(batt) > 20);
+			eg4Wire('eg4wSolar', solar, false);
+			eg4Wire('eg4wLoad', load, false);
+			eg4Wire('eg4wBatt', batt, batt < 0);
+		}
+
+		// No reading for 30 s: grey the values and stop the dots.
+		function eg4CheckStale() {
+			if (Date.now() - eg4LastSeen > 30000) {
+				document.getElementById('eg4').classList.add('stale');
+				document.getElementById('eg4Status').textContent = 'No data';
+				['eg4wSolar', 'eg4wBatt', 'eg4wLoad'].forEach(function(id) { eg4Wire(id, 0, false); });
+			}
+		}
+
+		function eg4Poll() {
+			fetch('/realtime/getEG4')
+				.then(function(response) { if (response.status === 200) return response.json().then(eg4Show); })
+				.catch(function(err) { console.log('EG4 fetch error: ' + err); });
+			setTimeout(eg4Poll, 5000);
+		}
+
+		function eg4Start() {
+			var svg = document.querySelector('#eg4 svg');
+			svg.style.height = Math.max(120, $('#temperatures').height() - 10) + 'px';
+			svg.style.maxWidth = (window.innerWidth / 5 - 10) + 'px';
+			if (window.EventSource) {
+				new EventSource('/realtime/eg4Events').onmessage = function(e) {
+					try { eg4Show(JSON.parse(e.data)); } catch (err) { console.log('EG4 event error: ' + err); }
+				};
+			} else {
+				eg4Poll();
+			}
+			setInterval(eg4CheckStale, 5000);
+		}
+		eg4Start();
 		setTimeout(reloadPage, 900000);	// Reload the page every 15 minutes
   </script>
 </html>
