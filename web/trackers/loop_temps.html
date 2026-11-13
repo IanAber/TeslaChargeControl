@@ -1,236 +1,46 @@
+<!doctype html>
 <html lang="en">
 <head>
-    <title id='Description'>Cedar Technology AC Loop Temperatures</title>
-    <link rel="stylesheet" href="../jqwidgets/styles/jqx.base.css" type="text/css" />
-    <link rel="stylesheet" href="../jqwidgets/styles/jqx.web.css" type="text/css" />
-    <script type="text/javascript" src="../scripts/jquery-3.6.0.min.js"></script>
-    <script type="text/javascript" src="../jqwidgets/jqxcore.js"></script>
-    <script type="text/javascript" src="../jqwidgets/jqxchart.core.js"></script>
-    <script type="text/javascript" src="../jqwidgets/jqxdraw.js"></script>
-    <script type="text/javascript" src="../jqwidgets/jqxdata.js"></script>
-	<script type="text/javascript" src="/jqwidgets/jqxdatetimeinput.js"></script>
-	<script type="text/javascript" src="/jqwidgets/jqxcalendar.js"></script>
-    <script type="text/javascript">
-
-		var start = new Date();
-        start.setSeconds(0);
-        start.setMinutes(0);  
-        start.setHours(0);
-        var end = new Date(start);
-        end.setHours(23);
-        end.setMinutes(59);
-        end.setSeconds(59);
-        var currentTimeOut;
-
-		function buildURLForTimes(start, end) {
-			$("#startAt").jqxDateTimeInput('setDate', start );
-			$("#endAt").jqxDateTimeInput('setDate', end );
-			url = encodeURI("../realtime/getLoopTemps?start="
-					+ start.getUTCFullYear() + "-" + (start.getUTCMonth() + 1) + "-" + start.getUTCDate() + " " + start.getUTCHours() + ":" + start.getUTCMinutes()
-					+ "&end=" + end.getUTCFullYear() + "-" + (end.getUTCMonth() + 1) + "-" +  end.getUTCDate() + " " + end.getUTCHours() + ":" + end.getUTCMinutes());
-			return url;
-    	}
-
-		function buildURL() {
-			end = new Date();
-			start = new Date(end - document.getElementById("timeRange").value);
-			return buildURLForTimes(start, end);
-		}
-		function buildURLCustomTimes() {
-			end = $("#endAt").jqxDateTimeInput('value');
-			start = $("#startAt").jqxDateTimeInput('value');
-			return buildURLForTimes(start, end);
-    	}
-
-
-        var PumpTimeOut;
-		var start = new Date();
-        start.setSeconds(0);
-        start.setMinutes(0);  
-        start.setHours(0);
-        var end = new Date(start);
-        end.setHours(23);
-        end.setMinutes(59);
-        end.setSeconds(59);
-
-		function xAxisFormatFunction(value, itemIndex, series, group) {
-        	var dt = new Date(value * 1000);
-			return dt.getHours().toLocaleString('en-US', {minimumIntegerDigits: 2, useGrouping:false}) + ":"
-													 + dt.getMinutes().toLocaleString('en-US', {minimumIntegerDigits: 2, useGrouping:false});
-        }
-
-        $(document).ready(function () {
-			var loopSettings = {
-				title: "Cedar Technology",
-				description: "AC Chiller Loop Temperatures.",
-				enableAnimations: false,
-				animationDuration: 1000,
-				enableAxisTextAnimation: true,
-				showLegend: true,
-				padding: { left: 5, top: 5, right: 5, bottom: 5 },
-				titlePadding: { left: 90, top: 0, right: 0, bottom: 10 },
-				colorScheme: 'scheme04',
-				categoryAxis: {
-					dataField: 'logged',
-					showGridLines: false,
-					textRotationAngle: 270,
-					unitInterval: 1800,
-					formatFunction: xAxisFormatFunction
-				},
-				colorScheme: 'scheme01',
-				seriesGroups: [{
-					type: 'spline',
-					valueAxis: {
-						interval: 1,
-						gridLines: {
-							visible: true,
-							step: 1,
-						},
-						labels: {
-							formatSettings: {
-								decimalPlaces: 0,
-							},
-							visible: true,
-							step: 1,
-						},
-						minValue: 0,
-						maxValue: 100,
-						description: 'Temperature in Celsius',
-					},
-					series: [{
-						dataField: 'GroundLoopIn',
-						displayText: 'Ground Loop In',
-						lineColor: '#FF0000',
-						fillColor: '#FF0000',
-					},					
-					{
-						dataField: 'GroundLoopOut',
-						displayText: 'Ground Loop Out',
-						lineColor: '#FFC0C0',
-						fillColor: '#FFC0C0',
-					},
-					{
-						dataField: 'FromHouse',
-						displayText: 'From House',
-						lineColor: '#00FF00',
-						fillColor: '#00FF00',
-					},
-					{
-						dataField: 'ToHouse',
-						displayText: 'To House',
-						lineColor: '#C0FFC0',
-						fillColor: '#C0FFC0',
-					},
-					{
-						dataField: 'ChillerOut',
-						displayText: 'Chiller Out',
-						lineColor: '#0000FF',
-						fillColor: '#0000FF',
-					},
-					{
-						dataField: 'Bypass',
-						displayText: 'Bypass',
-						lineColor: '#C0C0FF',
-						fillColor: '#C0C0FF',
-					}]
-				}]
-			};
-			$('#solarChartContainer').jqxChart(loopSettings);
-			sa = $("#startAt");
-			ea = $("#endAt")
-			sa.jqxDateTimeInput({ theme: "arctic", formatString: "F", showTimeButton: true, width: '300px', height: '25px' });
-			sa.jqxDateTimeInput({ dropDownVerticalAlignment: 'top'});
-			sa.css("float", "left");
-			ea.jqxDateTimeInput({ theme: "arctic", formatString: "F", showTimeButton: true, width: '300px', height: '25px' });
-			ea.jqxDateTimeInput({ dropDownVerticalAlignment: 'top'});
-			ea.css("float", "left");
-			getCurrent();
-		});
-								
-		function refresh(url) {
-			fetch(url)
-				.then( function(response) {
-					if (response.status == 200) {
-						response.json()
-							.then(function(data) {
-
-                            	now = new Date();
-                            	end = Math.trunc(now.getTime() / 1000);
-                            	start = end - document.getElementById("timeRange").value / 1000
-			    				$('#solarChartContainer').jqxChart({source:data});
-                            	$('#solarChartContainer').jqxChart({categoryAxis:{
-                                	dataField: 'logged',
-                        	        showGridLines: false,
-                            	    textRotationAngle: 270,
-                                	unitInterval: document.getElementById("timeRange").value / 24000,
-                                	formatFunction: xAxisFormatFunction,
-                                	minValue: start,
-                                	maxValue: end}});
-                            	$('#solarChartContainer').jqxChart('update');
-
-								$("#waiting").hide();
-                        });
-                    }
-                })
-				.catch(function(err) {
-					if(err.name === "TypeError" && err.message != "cancelled") {
-						alert('Solar Fetch Error :-S' + err.message);
-					}
-				});
-		}
-		
-		function goBack() {
-			window.clearInterval(solarTimeOut);
-			if (window.history.length > 1) {
-				setTimeout(window.history.back(), 1000);
-			} else {
-				setTimeout(window.close(), 1000);
-			}
-		}
-		function getCurrent() {
-			clearTimeout(currentTimeOut);
-			currentTimeOut = 0;
-			if (parseInt($("#timeRange").val()) === 0) {
-				$("#customDateTimes").show();
-				$("#waiting").show();
-				refresh(buildURLCustomTimes());
-			} else {
-				$("#customDateTimes").hide();
-				$("#waiting").show();
-				refresh(buildURL());
-			}
-		}
-    </script>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Chiller loop temperatures</title>
+<link rel="stylesheet" href="../scripts/sc.css">
 </head>
-    <body style="background:white;">
-        <div id='solarChartContainer' style="width:100%; height: 96%" ></div>
-		<div style="text-align:center; height: 4%">
-			<div style="float:left;height:100%">
-				<button onClick="goBack()" style="width:100%">Back</button>&nbsp;
-			</div>
-			<div style="float:left">
-				<label for="timeRange">Time Span</label>
-				<select id="timeRange" onchange="getCurrent()">
-					<option value=259200000>3 Days</option>
-					<option value=172800000>2 Days</option>
-					<option value=86400000>24 Hours</option>
-					<option value=43200000>12 Hours</option>
-					<option value=28800000 selected='selected'>8 Hours</option>
-					<option value=14400000>4 Hours</option>
-					<option value=7200000>2 Hours</option>
-					<option value=3600000>1 Hour</option>
-					<option value=1800000>30 Minutes</option>
-					<option value=0>Custom</option>
-				</select>
-			</div>
-			<div id="customDateTimes" style="float:left">
-				<span style="float:left;font-size:larger">Start At:&nbsp;</span>
-				<div id="startAt"></div>
-				<span style="float:left;font-size:larger">&nbsp;End At:&nbsp;</span>
-				<div id="endAt"></div>&nbsp;
-				<button onClick="refresh(buildURLCustomTimes())" style="height:100%; width:100px" >Update</button>
-			</div>
-			<div id="waiting" style="float:left; visibility:visible"><span>Fetching Data please stand by...</span></div>
-		</div>
-    </body>
+<body>
+<main>
+  <header>
+    <h1 id="title">Chiller loop temperatures</h1>
+    <span class="status" id="status" role="status" aria-live="polite"></span>
+    <nav><a href="../ac_status.html">System status</a></nav>
+  </header>
+  <p class="sub" id="sub"></p>
+  <div class="controls" id="controls"></div>
+  <section class="card" id="charts"></section>
+</main>
+<script src="../scripts/sc.js"></script>
+<script src="../scripts/tracker.js"></script>
+<script>
+SC.tracker({
+  title: "Chiller loop temperatures",
+  sub: "Ground loop, house loop, chiller output and bypass.",
+  sources: {
+    loop: { url: "/realtime/getLoopTemps", map: (r) => ({ groundIn: r.GroundLoopIn, groundOut: r.GroundLoopOut, toHouse: r.ToHouse,
+                                                         fromHouse: r.FromHouse, chiller: r.ChillerOut, bypass: r.Bypass }) },
+  },
+  charts: [{
+    source: "loop", unit: "°C", decimals: 1, minSpan: 10, gapMs: 600000, height: 340,
+    series: [
+      { label: "Ground loop in", color: "--series-1", key: "groundIn" },
+      { label: "Ground loop out", color: "--series-2", key: "groundOut" },
+      { label: "To house", color: "--series-3", key: "toHouse" },
+      { label: "From house", color: "--series-4", key: "fromHouse" },
+      { label: "Chiller out", color: "--series-5", key: "chiller" },
+      { label: "Bypass", color: "--series-6", key: "bypass" },
+    ],
+  }],
+  live: (m) => m.temps && { loop: { t: m.temps.time, groundIn: m.temps.groundLoopIn, groundOut: m.temps.groundLoopOut, toHouse: m.temps.toHouse,
+                                    fromHouse: m.temps.fromHouse, chiller: m.temps.chillerOut, bypass: m.temps.bypass } },
+});
+</script>
+</body>
 </html>

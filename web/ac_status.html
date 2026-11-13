@@ -1,1135 +1,405 @@
+<!doctype html>
 <!--
-	*index.html
-	*author: Ian Abercrombie
-	*project: Battery Monitor
+	ac_status.html - system status
+	author: Ian Abercrombie
+	Live values arrive from the controller's /realtime/statusEvents stream.
 -->
 <html lang="en">
-  <head>
-      <title>System Status</title>
-    <link rel="stylesheet" href="/jqwidgets/styles/jqx.base.css" type="text/css" />
-    <script type="text/javascript" src="/jqwidgets/jqxcore.js"></script>
-    <script type="text/javascript" src="/jqwidgets/jqxdata.js"></script>
-    <script type="text/javascript" src="/jqwidgets/jqxdraw.js"></script>
-    <script type="text/javascript" src="/jqwidgets/jqxgauge.js"></script>
-    <script type="text/javascript" src="/jqwidgets/jqxbuttons.js"></script>
-    <script type="text/javascript" src="/jqwidgets/jqxbargauge.js"></script>
-    <script type="text/javascript">
-    
-    var LastData = null;
-    var LastRealTimeData = null;
-    var getDataTimeout =  0;
-	var getRealTimeDataTimeout = 0;
-	var reloadTimer;
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>System Status</title>
+<link rel="stylesheet" href="scripts/sc.css">
+<style>
+.tiles { display: grid; grid-template-columns: repeat(auto-fill, minmax(290px, 1fr)); gap: 16px; }
+.tiles > .card { margin: 0; }
+.wide { grid-column: span 2; }
+@media (max-width: 640px) { .wide { grid-column: auto; } }
+.big { font-size: 28px; font-weight: 600; font-variant-numeric: tabular-nums; margin: 4px 0 2px; }
+.big small { font-size: 14px; font-weight: 400; color: var(--text-secondary); }
+.note { color: var(--text-secondary); font-size: 13px; margin: 0 0 6px; display: flex; align-items: center; gap: 6px; }
+.note:empty { display: none; }
+.links { font-size: 13px; margin: 10px 0 0; line-height: 1.8; }
+.stale-note { display: none; align-items: center; gap: 6px; color: var(--text-secondary); font-size: 12px; margin-top: 6px; }
+.stale .stale-note { display: flex; }
+.stale .big, .stale .r-val { color: var(--text-muted); }
 
-    	function openReport(reportXMLFileName)
-    	{
-	    	var today = new Date();
-			var dd = today.getUTCDate();
-			var mm = today.getUTCMonth()+1; //January is 0!
-			var yyyy = today.getUTCFullYear();
-			var endHR = today.getUTCHours() + 1;
-			var startHR = endHR - 6;
-			var startMin = ":00:00";
-			var endMin = ":00:00";
+/* label | meter | value rows */
+.rows { display: grid; grid-template-columns: auto 1fr auto; gap: 6px 10px; align-items: center; margin-top: 8px; font-size: 13px; }
+.rows:empty { display: none; }
+.r-label { color: var(--text-secondary); }
+.r-val { font-variant-numeric: tabular-nums; font-weight: 600; text-align: right; min-width: 64px; }
+.meter { height: 6px; border-radius: 3px; background: var(--grid); position: relative; overflow: hidden; }
+.meter i { position: absolute; left: 0; top: 0; bottom: 0; border-radius: 3px; background: var(--series-1); }
+.meter.mark { overflow: visible; }
+.meter.mark::after { content: ""; position: absolute; left: 50%; top: -2px; bottom: -2px; width: 1px; background: var(--axis); }
+.scale { display: flex; justify-content: space-between; font-size: 11px; color: var(--text-muted); grid-column: 2; margin-top: -4px; }
 
-			if(dd<10) {
-			    dd = '0'+dd
-			} 
+.onoff { display: inline-flex; align-items: center; gap: 6px; }
+.onoff::before { content: ""; width: 8px; height: 8px; border-radius: 50%; border: 1.5px solid var(--text-muted); }
+.onoff.on::before { background: var(--flow); border-color: var(--flow); }
+.kv { display: grid; grid-template-columns: 1fr auto; gap: 4px 12px; font-size: 13px; margin-top: 8px; }
+.kv > span:nth-child(odd) { color: var(--text-secondary); }
+.kv > span:nth-child(even) { text-align: right; font-variant-numeric: tabular-nums; font-weight: 600; }
 
-			if(mm<10) {
-			    mm = '0'+mm
-			}
-			
-			if(endHR > 23)
-			{
-				endHR = 23;
-				endMin = ":59:59";
-			}
-			
-			if(startHR < 0)
-			{
-				startHR= 0;
-			}
+/* EG4 flow */
+#eg4flow { display: block; width: 100%; max-width: 340px; margin: 4px auto 0; }
+#eg4flow .box { fill: var(--surface-1); stroke: var(--axis); stroke-width: 1; }
+#eg4flow .active .box { stroke: var(--flow); stroke-width: 1.5; }
+#eg4flow .name { fill: var(--text-secondary); font-size: 11px; text-anchor: middle; }
+#eg4flow .val { fill: var(--text-primary); font-size: 17px; font-weight: 600; text-anchor: middle; font-variant-numeric: tabular-nums; }
+#eg4flow .fnote { fill: var(--text-secondary); font-size: 10px; text-anchor: middle; }
+#eg4flow .wire { fill: none; stroke: var(--idle); stroke-width: 3; }
+#eg4flow .wire.on { stroke: var(--flow); stroke-dasharray: 2 8; stroke-linecap: round; animation: eg4flow 1s linear infinite; }
+#eg4flow .wire.on.rev { animation-direction: reverse; }
+#eg4flow .socfill { fill: var(--flow); opacity: 0.18; }
+.stale #eg4flow .val { fill: var(--text-muted); }
+@keyframes eg4flow { to { stroke-dashoffset: -10; } }
+@media (prefers-reduced-motion: reduce) { #eg4flow .wire.on { animation: none; stroke-dasharray: none; } }
+</style>
+</head>
+<body>
+<main>
+  <header>
+    <h1>System status</h1>
+    <span class="status" id="status" role="status" aria-live="polite"></span>
+    <nav aria-label="Other pages">
+      <a href="eg4.html">EG4 inverters</a>
+      <a href="ChargeParams">Charge parameters</a>
+      <a href="/logging">Logging</a>
+      <a href="ac_control.php">AC control</a>
+    </nav>
+  </header>
 
-			today = yyyy + '-' + mm + '-' + dd;
-    		window.open('/reportico/run.php?execute_mode=EXECUTE&project=AC&xmlin=' + reportXMLFileName + '&DateToRun=' + today + '&StartAt=' + startHR + startMin + '&EndAt=' + endHR + endMin);
-    	}
+  <div class="tiles">
+    <a class="card" href="eg4.html" id="eg4Card">
+      <div class="card-head"><h2>EG4 inverters</h2><span class="more">Details →</span></div>
+      <svg id="eg4flow" viewBox="0 0 200 200" role="img" aria-label="EG4 power flow: solar, battery and load">
+        <path id="eg4wSolar" class="wire" d="M100 50 V82"/>
+        <path id="eg4wBatt" class="wire" d="M75 100 H47 V138"/>
+        <path id="eg4wLoad" class="wire" d="M125 100 H153 V138"/>
+        <g id="eg4nSolar">
+          <rect class="box" x="50" y="4" width="100" height="46" rx="6"/>
+          <text class="name" x="100" y="19">Solar</text>
+          <text class="val" id="eg4Solar" x="100" y="40">–</text>
+        </g>
+        <g>
+          <rect class="box" x="75" y="84" width="50" height="32" rx="6"/>
+          <text class="fnote" x="100" y="104">Inverters</text>
+        </g>
+        <g id="eg4nBatt">
+          <rect class="box" x="1" y="140" width="92" height="56" rx="6"/>
+          <rect class="socfill" id="eg4SocFill" x="2" y="195" width="90" height="0" rx="5"/>
+          <text class="name" x="47" y="154">Battery</text>
+          <text class="val" id="eg4Soc" x="47" y="174">–</text>
+          <text class="fnote" id="eg4Batt" x="47" y="189"></text>
+        </g>
+        <g id="eg4nLoad">
+          <rect class="box" x="107" y="140" width="92" height="56" rx="6"/>
+          <text class="name" x="153" y="154">Load</text>
+          <text class="val" id="eg4Load" x="153" y="174">–</text>
+          <text class="fnote" id="eg4Note" x="153" y="189"></text>
+        </g>
+      </svg>
+      <div class="stale-note" id="eg4Stale"></div>
+    </a>
 
-		// ../realtime/get_data.php
-		function getData() {
-			fetch('/realtime/getdata')
-				.then( function(response) {
-					if (response.status == 200) {
-						response.json()
-							.then(function(Data) {
-								setData(Data);
-								LastData = Data;
-								clearTimeout(reloadTimer);
-								reloadTimer = setTimeout(reloadPage, 10000);
-							});
-					}
-				})
-				.catch(function(err) {
-					console.log('Fetch Error :-S' + err);
-				});
-			setTimeout(getData, 2000);
-		}
+    <a class="card" href="trackers/charging.html">
+      <div class="card-head"><h2>House battery</h2><span class="more">History →</span></div>
+      <div class="big" id="battSoc">–</div>
+      <p class="note" id="battFlow"></p>
+      <div class="rows" id="battRows"></div>
+    </a>
 
-		function getRealTimeData() {
-			fetch('/')
-				.then( function(response) {
-					if (response.status == 200) {
-						response.json()
-							.then(function(Data) {
-								setRealTimeData(Data);
-								LastRealTimeData = Data;
-							});
-					}
-				})
-				.catch(function(err) {
-					console.log('Fetch Error :-S' + err);
-				});
-			setTimeout(getRealTimeData, 1000);
-		}
+    <a class="card" href="trackers/inverterPower.html">
+      <div class="card-head"><h2>Sunny Island inverters</h2><span class="more">History →</span></div>
+      <div class="big" id="invPower">–</div>
+      <p class="note" id="invGen"></p>
+      <div class="kv" id="invKV"></div>
+    </a>
 
-		function setStatusOnOff(status, system) {
-		    if(status === true) {
-				document.getElementById(system).innerText = "ON";
-				document.getElementById(system).style.color = "red"
-		    } else {
-				document.getElementById(system).innerText = "OFF";
-				document.getElementById(system).style.color = "black"
- 		    }
-		}
-		
-		function  setRealTimeData(result) {
+    <a class="card" href="trackers/water_heater.html">
+      <div class="card-head"><h2>Battery voltage</h2><span class="more">History →</span></div>
+      <div class="big" id="voltBig">–</div>
+      <div class="kv" id="voltKV"></div>
+    </a>
 
-			// Handle the electrolyser breaker
-			// breaker = $("#electrolyserSwitch")
-			// if(result.electrolyser.enabled) {
-			// 	breaker.attr("src", "images/breaker_on.png")
-			// } else {
-			// 	breaker.attr("src", "images/breaker_off.png")
-			// }
-			// // Handle the heater breaker
-			// breaker = $("#heaterSwitch");
-            // if(result.heater.enabled == "ON") {
-			// 	breaker.attr("src", "images/breaker_on.png");
-            // } else {
-			// 	breaker.attr("src", "images/breaker_off.png");
-            // }
+    <a class="card wide" href="trackers/solar.html" id="solarCard">
+      <div class="card-head"><h2>Solar PV strings</h2><span class="more">History →</span></div>
+      <div class="big" id="solarTotal">–</div>
+      <div class="rows" id="solarRows"></div>
+      <div class="stale-note" id="solarStale"></div>
+    </a>
 
-            if((LastRealTimeData == null) || (LastRealTimeData.inverter.power) != result.inverter.power) {
-                $("#InverterPower").val(result.inverter.power);
-            }
-			if((LastRealTimeData == null) || (LastRealTimeData.inverter.iBatt != result.inverter.iBatt)) {
-		    	// a = 0 - result.inverter.iBatt;
-		    	// if( a >= 0) {
-				// 	sCaption = a + "A Charging";
-				// } else {
-				// 	sCaption = result.inverter.iBatt + "A Discharging";
-				// }
-				// $("#InverterCurrent").jqxGauge({caption:{value:sCaption}});
-				// $("#InverterCurrent").val(0 - result.inverter.iBatt);
-                if( result.inverter.bmsIBat >= 0) {
-                	sCaption = result.inverter.bmsIBat + "A Charging";
-                } else {
-                	sCaption = (0 - result.inverter.bmsIBat) + "A Discharging";
-                }
-                $("#InverterCurrent").jqxGauge({caption:{value:sCaption}});
-                $("#InverterCurrent").val(result.inverter.bmsIBat);
-		    }
-			if((LastRealTimeData == null) || (LastRealTimeData.inverter.vBatt != result.inverter.vBatt) || (LastRealTimeData.inverter.vSetpoint != result.inverter.vSetpoint)) {
-				$("#InverterVolts").val([result.inverter.vSetpoint, result.inverter.vBatt]);
-		    }
-			if((LastRealTimeData == null) || (LastRealTimeData.inverter.bmsIBat != result.inverter.bmsIBat) || (LastRealTimeData.inverter.vBatt != result.inverter.vBatt)) {
-				battPower = (result.inverter.bmsIBat * result.inverter.vBatt) / 1000
-                ctrl = $("#battPowerText")
-				if(battPower < 0) {
-					ctrl.text(0 - battPower.toFixed(3) + " kW Discharging");
-                    ctrl.addClass("discharging");
-                    ctrl.removeClass("charging");
-				} else {
-					ctrl.text(battPower.toFixed(3) + " kW Charging");
-                    ctrl.removeClass("discharging");
-                    ctrl.addClass("charging");
-				}
-//				$("#InverterVolts").jqxBarGauge({title:{subtitle:{text:battPowerText,font:{color:battPowerColour}}}});
-			}
-			
-			if((LastRealTimeData == null)
-			    	|| (LastRealTimeData.inverter.vBattDeltaMin != result.inverter.vBattDeltaMin)
-			    	|| (LastRealTimeData.inverter.vBattDeltaMax != result.inverter.vBattDeltaMax)
-					|| (LastRealTimeData.inverter.vSetpoint != result.inverter.vSetpoint)
-					|| (LastRealTimeData.inverter.vBatt != result.inverter.vBatt)) {
-				document.getElementById("vBattDeltaMin").innerText = result.inverter.vBattDeltaMin + "V";
-				document.getElementById("vBattDelta").innerText = (result.inverter.vSetpoint - result.inverter.vBatt).toFixed(2) + "V";
-				document.getElementById("vBattDeltaMax").innerText = result.inverter.vBattDeltaMax + "V";
-			}
+    <a class="card" href="trackers/hot_tank.html" data-temps>
+      <div class="card-head"><h2>Hot tank</h2><span class="more">History →</span></div>
+      <div class="big" id="hotTrigger">–</div>
+      <div class="rows" id="hotRows"></div>
+      <div class="stale-note"></div>
+    </a>
 
-			if((LastRealTimeData == null) || (LastRealTimeData.inverter.soc != result.inverter.soc)) {
-				$("#InverterSoc").val(result.inverter.soc);
-				document.getElementById("soc").innerText = "SOC = " + result.inverter.soc.toString() + "%";
-		    }
-			// if((LastRealTimeData == null) || (LastRealTimeData.heater.setting != result.heater.setting)) {
-			// 	$("#AuxHeater").val(result.heater.setting);
-		    // }
-			if(result.tesla.cars.length > 0){
-				document.getElementById('Tesla').style.backgroundColor = "";
-				if((LastRealTimeData == null) || (LastRealTimeData.tesla.cars[0].maxAmps != result.tesla.cars[0].maxAmps) || (LastRealTimeData.tesla.cars[0].Current != result.tesla.cars[0].Current)) {
-					$("#Tesla").val([result.tesla.cars[0].maxAmps, result.tesla.cars[0].Current])
-				}
-				if(result.tesla.cars[0].status == 'Charging') {
-					result.tesla.cars[0].status = 'Charging ' + (result.tesla.cars[0].Current * 0.24).toFixed(3) + "kW";
-					teslaStatusColour = 'green'
-				} else {
-					teslaStatusColour = 'black'
-				}
-				if((LastRealTimeData == null) || (LastRealTimeData.tesla.cars[0].status != result.tesla.cars[0].status)) {
-                    $("#Tesla").jqxBarGauge("title", {subtitle: result.tesla.cars[0].status});
-//					$("#Tesla").jqxBarGauge({title:{subtitle:{text:result.tesla.cars[0].status,font:{color:teslaStatusColour}}}});
-				}
-			} else {
-				$("#Tesla").val([0, 0])
-				$("#Tesla").jqxBarGauge({title:{subtitle:{text:"No Data!",font:{color:"white"}}}});
-				document.getElementById('Tesla').style.backgroundColor = "red";
-			}
+    <a class="card" href="trackers/buffer_tank.html" data-temps>
+      <div class="card-head"><h2>Buffer tank</h2><span class="more">History →</span></div>
+      <div class="rows" id="bufferRows"></div>
+      <div class="stale-note"></div>
+    </a>
 
-            if(result.inverter.autoGn == "true") {
-                document.getElementById('GeneratorStatus').style.color = "white";
-                document.getElementById('GeneratorStatus').style.backgroundColor = "darkred";
-                document.getElementById('GeneratorStatus').innerText = "Generator Running";
-            } else {
-                document.getElementById('GeneratorStatus').style.color = "green";
-                document.getElementById('GeneratorStatus').style.backgroundColor = "white";
-                document.getElementById('GeneratorStatus').innerText = "Generator Stopped";
-            }
-			if((LastRealTimeData == null) || (LastRealTimeData.inverter.frequency != result.inverter.frequency)) {
-				$("#InverterFrequency").val(result.inverter.frequency);
-			}
+    <a class="card" href="trackers/solar_temps.html" data-temps>
+      <div class="card-head"><h2>Solar hot water</h2><span class="more">History →</span></div>
+      <div class="rows" id="solarTempRows"></div>
+      <div class="stale-note"></div>
+    </a>
 
-            $("#socVal").text(result.inverter.bmsSOC + "%");
-            $("#sohVal").text(result.inverter.bmsSOH + "%");
-            $("#vbatVal").text(result.inverter.bmsVBat + "V");
-            let ibatVal = $("#ibatVal")
-            ibatVal.text(result.inverter.bmsIBat + "A");
-            if (result.inverter.bmsIBat >= 0) {
-                ibatVal.addClass("charging");
-                ibatVal.removeClass("discharging");
-            } else {
-                ibatVal.addClass("discharging");
-                ibatVal.removeClass("charging");
-            }
-            let siIbatVal = $("#siIbatVal");
-            siIbatVal.text((0 - result.inverter.iBatt) + "A");
-            if (result.inverter.iBatt <= 0) {
-                siIbatVal.addClass("charging");
-                siIbatVal.removeClass("discharging");
-            } else {
-                siIbatVal.addClass("discharging");
-                siIbatVal.removeClass("charging");
-            }
-            let avgIbatVal = $("#avgIbatVal");
-            avgIbatVal.text((result.inverter.iBattAvg) + "A");
-            if (result.inverter.iBattAvg >= 0) {
-                avgIbatVal.addClass("charging");
-                avgIbatVal.removeClass("discharging");
-            } else {
-                avgIbatVal.addClass("discharging");
-                avgIbatVal.removeClass("charging");
-            }
-            $("#tbatVal").text(result.inverter.bmsTBat + "℃");
-            $("#chargeVoltsVal").text(result.inverter.bmsChargeVolts + "V");
-            $("#dischargeVoltsVal").text(result.inverter.bmsDischargeVolts + "V");
-            $("#maxChargeAmpsVal").text(result.inverter.bmsChargeCurrentMax + "A");
-            $("#maxDischargeAmpsVal").text(result.inverter.bmsDichargeCurrentMax + "A");
-		}
+    <a class="card" href="trackers/solarPump.html">
+      <div class="card-head"><h2>Solar pump</h2><span class="more">History →</span></div>
+      <div class="big" id="pumpBig">–</div>
+      <div class="rows" id="pumpRows"></div>
+    </a>
 
-		function setData(result) {
-			var systime = Date.parse(result.temps.logged.replace(/-/g, "/"));
+    <a class="card" href="trackers/loop_temps.html" data-temps>
+      <div class="card-head"><h2>Chiller loop</h2><span class="more">History →</span></div>
+      <div class="rows" id="loopRows"></div>
+      <div class="stale-note"></div>
+    </a>
 
-		    setStatusOnOff(result.pins.port2, "acStatus");
-		    setStatusOnOff(result.pins.port4, "heaterStatus");
-		    setStatusOnOff(result.pins.port0, "fanStatus");
+    <a class="card" href="trackers/ac_temps.html" data-temps>
+      <div class="card-head"><h2>Air conditioning</h2><span class="more">History →</span></div>
+      <div class="kv" id="equipKV"></div>
+      <div class="rows" id="acRows"></div>
+      <div class="stale-note"></div>
+    </a>
 
-			if(LastData == null || LastData.pumps.PSOP != result.pumps.PSOP) {
-				sCaption = "Solar " + result.pumps.PSOP + "%";
-				$("#SolarPump").jqxGauge({caption:{value:sCaption, position: 'bottom', offset: [0, 10]}});
-				$("#SolarPump").val(result.pumps.PSOP);
-			}
-		    if((LastData == null) ||
-                (LastData.temps.GroundLoopIn != result.temps.GroundLoopIn) ||
-                (LastData.temps.GroundLoopOut != result.temps.GroundLoopOut) ||
-                (LastData.temps.ToHouse != result.temps.ToHouse) ||
-                (LastData.temps.FromHouse != result.temps.FromHouse) ||
-                (LastData.temps.ChillerOut != result.temps.ChillerOut) ||
-                (LastData.temps.Bypass != result.temps.Bypass)) {
-				$("#ChillerLoop").val([result.temps.GroundLoopIn / 10, result.temps.GroundLoopOut / 10,
-                result.temps.ToHouse / 10, result.temps.FromHouse/ 10,
-                result.temps.ChillerOut / 10, result.temps.Bypass / 10]);
-		    }
-		    if((LastData == null) || (LastData.temps.HotTankBottom != result.temps.HotTankBottom) || (LastData.temps.HotTankMiddle != result.temps.HotTankMiddle) || (LastData.temps.HotTankTop != result.temps.HotTankTop)) {
-		 	 	$("#HotTank").val([result.temps.HotTankBottom / 10, result.temps.HotTankMiddle / 10, result.temps.HotTankTop / 10]);
-		    }
-		    if((LastData == null) || (LastData.temps.BufferTankBottom != result.temps.BufferTankBottom) || (LastData.temps.BufferTankMiddle != result.temps.BufferTankMiddle) || (LastData.temps.BufferTankTop != result.temps.BufferTankTop)) {
-				$("#BufferTank").val([result.temps.BufferTankBottom / 10, result.temps.BufferTankMiddle / 10, result.temps.BufferTankTop / 10]);
-		    }
-            if((LastData == null) || (LastData.temps.MatsInput != result.temps.MatsInput) || (LastData.temps.MatsOutput != result.temps.MatsOutput) || (LastData.temps.DehumidifierOutput != result.temps.DehumidifierOutput)) {
-                $("#AC").val([result.temps.MatsInput / 10, result.temps.MatsOutput / 10, result.temps.DehumidifierOutput / 10]);
-            }
-            if((LastData == null) || (LastData.temps.SolarCollector != result.temps.SolarCollector) || (LastData.temps.SolarInlet != result.temps.SolarInlet)
-                || (LastData.temps.SolarOutlet != result.temps.SolarOutlet)) {
-                $("#SolarTemps").val([result.temps.SolarCollector / 10, result.temps.SolarInlet / 10, result.temps.SolarOutlet / 10]);
-            }
-		    $('#Solar').val([result.solar.J, result.solar.K, result.solar.A, result.solar.B, result.solar.C, result.solar.D, result.solar.E, result.solar.F, result.solar.G, result.solar.H, result.solar.I]);
-			solarTotal = ((parseFloat(result.solar.A)
-							+ parseFloat(result.solar.B) 
-							+ parseFloat(result.solar.C) 
-							+ parseFloat(result.solar.D) 
-							+ parseFloat(result.solar.E) 
-							+ parseFloat(result.solar.F) 
-							+ parseFloat(result.solar.G) 
-							+ parseFloat(result.solar.H)
-							+ parseFloat(result.solar.I)
-							+ parseFloat(result.solar.J)
-							+ parseFloat(result.solar.K)) / 1000).toFixed(3);
-			sTitle = 'Solar Power '+ solarTotal + ' kW';
-			$('#Solar').jqxBarGauge({title:{ text: sTitle}});
-		}
+    <div class="card">
+      <div class="card-head"><h2><a href="trackers/Tesla.html">Tesla charging</a></h2><a class="more" href="trackers/Tesla.html">History →</a></div>
+      <div class="big" id="teslaBig">–</div>
+      <p class="note" id="teslaNote"></p>
+      <div class="rows" id="teslaRows"></div>
+      <p class="links">
+        <a href="/startCharging" target="_blank">Start charging</a> ·
+        <a href="/stopCharging" target="_blank">Stop charging</a> ·
+        <a href="/getTeslaKeys">Set Tesla tokens</a>
+      </p>
+    </div>
 
-        function setUpGauges(){
-            let controlsHeight = $("#temperatures").height();
-            let controlsWidth = window.innerWidth  / 5;
-            let gaugeRadius = controlsWidth / 2;
-            if (controlsWidth > controlsHeight) {
-                gaugeRadius = controlsHeight / 2;
-            }
-            let gaugeDiameter = gaugeRadius * 2;
-//            let height = $('#SolarPump').height();
-//            let width = $('#SolarTemps').width();
-            solarHeight = gaugeDiameter - $("#Heater").height();
-            solarWidth = gaugeDiameter;
-            if (solarWidth > solarHeight) {
-                solarWidth = solarHeight;
-            } else {
-                solarHeight = solarWidth;
-            }
-            solarPadding = (gaugeDiameter - solarWidth) / 2;
-            $("#SolarPumpContainer").css({paddingLeft: solarPadding});
-            $('#SolarPump').jqxGauge({
-                width: solarWidth,
-                height: solarHeight,
-                ranges: [{startValue: 0, endValue: 100, style: {fill: 'GREEN', stroke: 'GREEN'}, startWidth: 5, endWidth: 5}],
-                ticksMinor: {interval: 5, size: '5%'},
-                ticksMajor: {interval: 20,size: '9%'},
-                max: 100,
-                min: 0,
-                value: 0,
-                radius: '50%',
-                animationDuration: 500,
-                cap: {size: '5%', style: { fill: '#ff0000', stroke: '#00ff00' }, visible: true},
-                caption: {value: 'Solar', position: 'bottom', offset: [0, 10], visible: true}
-            });
-            $('#SolarTemps').jqxBarGauge({
-                width: controlsWidth,
-                height: controlsHeight,
-                values: [0.0, 0.0, 0.0, 0.0],
-                min: 15,
-                max: 115,
-                animationDuration: 500,
-                startAngle: 265,
-                endAngle: 275,
-                title:	{
-                    text: 'Solar Temperatures',
-                    font: { size: 12, color: 'black', weight: 'bold', family:"Segoi-UI"},
-                    margin: { top: 0, bottom: 2, left: 0, right: 0},
-                    verticalAlignment: 'bottom'
-                },
-                labels: {
-                    font: {size: 8,},
-                    precision: 1,
-                },
-                colorScheme: 'customColors',
-                customColorScheme: { name: 'customColors', colors: ['#000066', '#006600', '#660000', '#006666'] },
-                tooltip: {visible: true,
-                precision: 1,
-                formatFunction: function (value, index){
-                    switch(index)
-                    {
-                        case 0 : return("Collector = " + value + '&#8451;');
-                        case 1 : return ("Input = " + value + '&#8451;');
-                        default : return ("Output = " + value + '&#8451;');
-                    }
-                }}
-            });
-            $('#Solar').jqxBarGauge({
-                width: controlsWidth,
-                height: controlsHeight - $("#GeneratorStatus").height(),
-                values: [100, 200, 300, 400, 500, 600, 700, 800, 900, 1000, 1100],
-                min: 0,
-                max: 3400,
-                startAngle: 265,
-                endAngle: 275,
-                animationDuration: 500,
-                title:	{
-                    text: 'Solar Watts',
-                    font: { size: 12, color: 'black', weight: 'bold', family:"Segoi-UI"},
-                    margin: { top: 2, bottom: 2, left: 2, right: 2},
-                    verticalAlignment: 'bottom'
-                },
-                labels: {
-                    font: {size: 8,},
-                    precision: 1,
-                },
-                colorScheme: 'customColors',
-                customColorScheme: { name: 'customColors', colors: ['#80E080', '#000000', '#D02020', '#2020D0', '#20D020', '#D0D020', '#20D0D0', '#D020D0', '#A040A0', '#40A0A0', '#A0A040'] },
-                tooltip: {visible: true,
-                    precision: 1,
-                    formatFunction: function (value, index){
-                        switch(index)
-                        {
-                            case 0 : return("Inverter 1-A = " + value + 'W');
-                            case 1 : return("Inverter 1-B = " + value + 'W');
-                            case 2 : return("Inverter 2-A = " + value + 'W');
-                            case 3 : return("Inverter 2-B = " + value + 'W');
-                            case 4 : return("Inverter 2-C = " + value + 'W');
-                            case 5 : return("Inverter 3-A = " + value + 'W');
-                            case 6 : return("Inverter 3-B = " + value + 'W');
-                            case 7 : return("Inverter 3-C = " + value + 'W');
-                            case 8 : return("Inverter 4-A = " + value + 'W');
-                            case 9 : return("Inverter 4-B = " + value + 'W');
-                            default : return ("Inverter 4-C = " + value + 'W');
-                        }
-                    }}
-            });
-            $('#HotTank').jqxBarGauge({
-                width: controlsWidth,
-                height: controlsHeight,
-                values: [0.0, 0.0, 0.0],
-                min: 50,
-                max: 100,
-                animationDuration: 0,
-                startAngle: 265,
-                endAngle: 275,
-                title:	{
-                    text: 'Hot Tank',
-                    font: { size: 12, color: 'black', weight: 'bold', family:"Segoi-UI"},
-                    margin: { top: 0, bottom: 2, left: 0, right: 0},
-                    verticalAlignment: 'bottom'
-                },
-                labels: {
-                    font: {size: 8,},
-                    precision: 1,
-                },
-                colorScheme: 'customColors',
-                customColorScheme: { name: 'customColors', colors: ['#660000', '#990000', '#ff0000'] },
-                tooltip: {visible: true,
-                    precision: 1,
-                    formatFunction: function (value, index){
-                        switch(index)
-                        {
-                            case 2 : return("Top = " + value + '&#8451;');
-                            case 1 : return ("Middle = " + value + '&#8451;');
-                            default : return ("Bottom = " + value + '&#8451;');
-                        }
-                    }}
-            });
-            $('#BufferTank').jqxBarGauge({
-                width: controlsWidth,
-                height: controlsHeight,
-                values: [0.0, 0.0, 0.0],
-                min: 5,
-                max: 60,
-                animationDuration: 0,
-                startAngle: 265,
-                endAngle: 275,
-                title:	{
-                    text: 'Buffer Tank',
-                    font: { size: 12, color: 'black', weight: 'bold', family:"Segoi-UI"},
-                    margin: { top: 0, bottom: 2, left: 0, right: 0},
-                    verticalAlignment: 'bottom'
-                },
-                labels: {
-                    font: {size: 8,},
-                    precision: 1,
-                },
-                colorScheme: 'customColors',
-                customColorScheme: { name: 'customColors', colors: ['#000066', '#000099', '#0000ff'] },
-                tooltip: {visible: true,
-                    precision: 1,
-                    formatFunction: function (value, index){
-                        switch(index)
-                        {
-                            case 2 : return("Top = " + value + '&#8451;')
-                            case 1 : return ("Middle = " + value + '&#8451;')
-                            default : return ("Bottom = " + value + '&#8451;');
-                        }
-                    }}
-            });
-            $('#AC').jqxBarGauge({
-                width: controlsWidth,
-                height: controlsHeight,
-                values: [0.0, 0.0, 0.0],
-                min: 5,
-                max: 60,
-                animationDuration: 0,
-                startAngle: 265,
-                endAngle: 275,
-                title:	{
-                    text: 'Air Conditioning',
-                    font: { size: 12, color: 'black', weight: 'bold', family:"Segoi-UI"},
-                    margin: { top: 0, bottom: 2, left: 0, right: 0},
-                    verticalAlignment: 'bottom'
-                },
-                labels: {
-                    font: {size: 8,},
-                    precision: 1,
-                },
-                colorScheme: 'customColors',
-                customColorScheme: { name: 'customColors', colors: ['#860000', '#000099', '#088088'] },
-                tooltip: {visible: true,
-                    precision: 1,
-                    formatFunction: function (value, index){
-                        switch(index)
-                        {
-                            case 2 : return("Dehumidifier = " + value + '&#8451;');
-                                break;
-                            case 1 : return ("Output = " + value + '&#8451;');
-                                break;
-                            default : return ("Input = " + value + '&#8451;');
-                        }
-                    }}
-            });
-
-            $('#InverterPower').jqxGauge({
-                height: gaugeDiameter - 5,
-                width: gaugeDiameter - 5,
-                radius: gaugeRadius - 5,
-                ranges: [
-                    {startValue: -14, endValue: -8, style: {fill: 'RED', stroke: 'RED'}, startWidth: 9, endWidth: 6},
-                    {startValue: -8, endValue: 0, style: {fill: 'GREEN', stroke: 'GREEN'}, startWidth: 6, endWidth: 3},
-                    {startValue: 0, endValue: 8, style: {fill: 'GREEN', stroke: 'GREEN'}, startWidth: 3, endWidth: 6},
-                    {startValue: 8, endValue: 14, style: {fill: 'RED', stroke: 'RED'}, startWidth: 6, endWidth: 9}
-                ],
-                ticksMinor: {interval: 0.5, size: '5%'},
-                ticksMajor: {interval: 1,size: '9%'},
-                labels: {interval:4},
-                max: 16,
-                min: -16,
-                value: 0,
-                animationDuration: 1000,
-                cap: {size: '5%', style: { fill: '#ff0000', stroke: '#00ff00' }, visible: true},
-                caption: {value: 'Inverter Power (KW)', position: 'bottom', offset: [0, 10], visible: true},
-            });
-
-            $('#ChillerLoop').jqxBarGauge({
-                width: controlsWidth,
-                height: controlsHeight,
-                values: [0.0, 0.0, 0.0, 0.0, 0.0],
-                min: 0,
-                max: 40,
-                animationDuration: 500,
-                startAngle: 265,
-                endAngle: 275,
-                title:	{
-                            text: 'Chiller Circuits',
-                            font: { size: 12, color: 'black', weight: 'bold', family:"Segoi-UI"},
-                            margin: { top: 0, bottom: 2, left: 0, right: 0},
-                            verticalAlignment: 'bottom'
-                        },
-                labels: {
-                            font: {size: 8,},
-                            precision: 1,
-                        },
-                colorScheme: 'customColors',
-                customColorScheme: { name: 'customColors', colors: ['red', 'blue'] },
-                tooltip: {
-                    visible: true,
-                    precision: 1,
-                    formatFunction: function (value, index){
-                        if(index === 0)
-//                            $("#ChillerLoop").val([result.temps.GroundLoopIn / 10, result.temps.GroundLoopOut / 10,
-  //                              result.temps.ToHouse / 10, result.temps.FromHouse/ 10,
-    //                            result.temps.ChillerOut / 10, result.temps.Bypass / 10]);
-
-                            return("Ground Loop In = " + value + '&#8451;');
-                        else if(index === 1)
-                            return ("Ground Loop Out = " + value + '&#8451;');
-                        else if(index === 2)
-                            return ("To House = " + value + '&#8451;');
-                        else if(index === 3)
-                            return ("From House = " + value + '&#8451;');
-                        else if(index === 4)
-                            return ("Chiller Out = " + value + '&#8451;');
-                        else if(index === 5)
-                            return ("Bypass = " + value + '&#8451;');
-                        }
-                }
-            });
-
-//            let h = $("#inverterValues").height();
-//            let w = $("#Tesla").width();
-//            if (h > w) {
-//             v = w;
-//            } else {
-//             v = h;
-//            }
-            $('#Tesla').jqxBarGauge({
-            width: controlsWidth,
-            height: controlsHeight,
-            values: [48.0, 48.0],
-            min: 0,
-            max: 48,
-            animationDuration: 500,
-            startAngle: 265,
-            endAngle: 275,
-            title:	{
-                        text: 'Tesla Charging Current',
-                        font: { size: 12, color: 'black', weight: 'bold', family:"Segoi-UI"},
-                        margin: { top: 0, bottom: 2, left: 0, right: 0},
-                        verticalAlignment: 'bottom',
-                        subtitle: {text:'Status', font:{size: 10, color:'black', weight:'bold'}}
-                    },
-            labels: {
-                        font: {size: 8,},
-                        precision: 1,
-                    },
-            colorScheme: 'customColors',
-            customColorScheme: { name: 'customColors', colors: ['#000066', '#006600'] },
-            tooltip: {visible: true,
-                      precision: 1,
-                      formatFunction: function (value, index){
-                                            switch(index)
-                                            {
-                                                case 0 : return("Available = " + value + 'A');
-                                                default : return ("Charging = " + value + 'A');
-                                            }
-                                        }}
-            });
-
-            $('#AuxHeater').jqxLinearGauge({
-                width: controlsWidth,
-                height: controlsHeight,
-                background: {
-                    borderRadius: 5,
-                },
-                orientation: 'vertical',
-                ticksMajor: {interval: 1,size: '25%'},
-                ticksMinor: {interval: 0, size: '0%'},
-                ticksOffset: ['25%', '14%'],
-                ticksPosition: 'both',
-                pointer: {size: '90%', style:{fill: 'red'}, offset: '-45%'},
-                scaleLength: '80%',
-                max: 7,
-                min: 0,
-                labels: {visible: false},
-                value: 0,
-                animationDuration: 0,
-            });
-            $('#InverterVolts').jqxBarGauge({
-                width: controlsWidth,
-                height: controlsHeight,
-                values: [50.0, 52.0],
-                min: 40,
-                max: 70,
-                animationDuration: 500,
-                startAngle: 265,
-                endAngle: 275,
-                title:	{
-                    text: 'Battery Volts',
-                    font: { size: 10, color: 'black', weight: 'bold', family:"Segoi-UI"},
-                    margin: { top: 0, bottom: 2, left: 0, right: 0},
-                    verticalAlignment: 'bottom',
-                    subtitle: {text:'Power', font:{size: 10, color:'green', weight:'bold'}}
-                },
-                labels: {
-                    font: {size: 8,},
-                    precision: 1,
-                },
-                colorScheme: 'customColors',
-                customColorScheme: { name: 'customColors', colors: ['#881010', '#E02020'] },
-                tooltip: {visible: true,
-                    precision: 1,
-                    formatFunction: function (value, index){
-                            switch(index)
-                            {
-                                case 0 : return("Setpoint = " + value + 'V');
-                                    break;
-                                default : return ("Battery = " + value + 'V');
-                            }
-                        }
-                }
-            });
-
-            $('#InverterCurrent').jqxGauge({
-                height: gaugeDiameter - 50,
-                width: gaugeDiameter - 50,
-                radius: gaugeRadius - 25,
-                ranges: [
-                    {startValue: -180, endValue: 0, style: {fill: 'RED', stroke: 'RED'}, startWidth: 9, endWidth: 5},
-                    {startValue: 0, endValue: 180, style: {fill: 'GREEN', stroke: 'GREEN'}, startWidth: 5, endWidth: 9}
-                ],
-                ticksMinor: {interval: 5, size: '5%'},
-                ticksMajor: {interval: 25,size: '9%'},
-                labels: {interval:50},
-                max: 350,
-                min: -350,
-                value: 0,
-                animationDuration: 1000,
-                cap: {size: '5%', style: { fill: '#ff0000', stroke: '#00ff00' }, visible: true},
-                caption: {value: 'Battery Current', position: 'bottom', offset: [0, 10], visible: true},
-            });
-            $('#InverterSoc').jqxLinearGauge({
-                width: controlsWidth,
-                height: controlsHeight,
-                background: { borderRadius: 5 },
-                orientation: 'vertical',
-                ticksMinor: {interval: 5, size: '5%'},
-                ticksMajor: {interval: 10, size: '10%'},
-                ticksOffset: ['50%', '2%'],
-                ticksPosition: 'far',
-                pointer: {size: '25%', style:{fill: 'green'}, offset:'-30%'},
-                scaleLength: '90%',
-                max: 100,
-                min: 0,
-                labels: {interval: 10, offset: '-5%', position: 'far', formatValue: function(value){return value + "%";}},
-                value: 75,
-                animationDuration: 0,
-                ranges: [
-                    { startValue: 0, endValue: 35, style: { fill: '#FF4800', stroke: '#FF4800'}},
-                    { startValue: 35, endValue: 70, style: { fill: '#FFA200', stroke: '#FFA200'}},
-                    { startValue: 70, endValue: 100, style: {fill: '#00FF00', stroke: '#00FF00'}}
-                ],
-                rangesOffset: '0%'
-            });
-            $('#InverterFrequency').jqxLinearGauge({
-                width: controlsWidth,
-                height: '50px',
-                background: {
-                    borderRadius: 5,
-                },
-                pointer: {
-                    pointerType: 'arrow',
-                    size: '50%',
-                    visible: true,
-                    offset: "0%",
-                },
-                orientation:"horizontal",
-                max: 63,
-                min: 56,
-                colorScheme: 'scheme02',
-                labels: {
-                    position: 'far',
-                    formatValue: function(val){if ((val % 2) === 1) return ""; else return val + "Hz";},
-                    interval: 1,
-                },
-                ticksMajor: {size: '10%', interval: 1},
-                ticksMinor: {size: '5%', interval: 0.5, style: {'stroke-width': 1, stroke: '#aaaaaa'}},
-                ranges: [
-                    {startValue: 56, endValue: 59, style: {fill: '#FFA200', stroke: '#FFA200'}},
-                    {startValue: 59, endValue: 61, style: {fill: '#00FF00', stroke: '#00FF00'}},
-                    {startValue: 61, endValue: 63, style: {fill: '#FF4800', stroke: '#FF4800'}}
-                ],
-            });
-	}
-	function reloadPage() {
-	  	var id = Math.max(
-    		window.setInterval(noop, 1000),
-    		window.setTimeout(noop, 1000));
-		while (id--) {
-    		window.clearTimeout(id);
-			window.clearInterval(id);
-  		}
-		window.location.reload(true)
-
-		function noop(){}
-	}
-
-	function switchElectrolyser() {
-		breaker = $("#electrolyserSwitch")
-		if (breaker.attr("src") === "images/breaker_off.png") {
-			breaker.attr("src", "images/breaker_on.png");
-			fetch('http://' + window.location.hostname + ':8080/enableElectrolyser')
-			.then( function(response) {
-					if (response.status === 200) {
-						response.json()
-							.then(function(Data) {
-								setRealTimeData(Data);
-								LastRealTimeData = Data;
-							});
-					}
-				})
-				.catch(function(err) {
-					console.log('Fetch Error :-S' + err);
-				});		
-		} else {
-			breaker.attr("src", "images/breaker_off.png")
-			fetch('http://' + window.location.hostname + ':8080/disableElectrolyser')
-			.then( function(response) {
-					if (response.status === 200) {
-						response.json()
-							.then(function(Data) {
-								setRealTimeData(Data);
-								LastRealTimeData = Data;
-							});
-					}
-				})
-				.catch(function(err) {
-					console.log('Fetch Error :-S' + err);
-				});		
-		}
-	}
-
-	function switchHeater() {
-		breaker = $("#heaterSwitch");
-		if (breaker.attr("src") === "images/breaker_off.png") {
-			breaker.attr("src","images/breaker_on.png");
-			fetch('http://' + window.location.hostname + ':8080/enableHeater')
-				.then( function(response) {
-					if (response.status === 200) {
-						response.json()
-							.then(function(Data) {
-								setRealTimeData(Data);
-								LastRealTimeData = Data;
-							});
-					}
-				})
-				.catch(function(err) {
-					console.log('Fetch Error :-S' + err);
-				});		
-		} else {
-			breaker.attr("src","images/breaker_off.png")
-			fetch('http://' + window.location.hostname + ':8080/disableHeater')
-				.then( function(response) {
-					if (response.status === 200) {
-						response.json()
-							.then(function(Data) {
-								setRealTimeData(Data);
-								LastRealTimeData = Data;
-							});
-					}
-				})
-				.catch(function(err) {
-					console.log('Fetch Error :-S' + err);
-				});
-		}
-	}
-
-	function openHeatPump() {
-		window.open("http://" + window.location.hostname + ":8085");
-	}
-
-    $(window).resize(function() {
-        if(this.resizeTO) clearTimeout(this.resizeTO);
-        this.resizeTO = setTimeout(function() {
-            $(this).trigger('windowResize');
-        }, 500);
-    });
-    $(window).on('windowResize', function() {
-        window.location.reload();
-    });
-
-	</script>
-    <style>
-        span.charging {
-            color: green;
-        }
-        span.discharging {
-            color: red;
-        }
-        div.centered {
-            text-align: center;
-            margin:auto;
-            margin-top: 0;
-            margin-bottom: 0;
-        }
-    	.BUTTON_JKX {
-		    background: #2FC8F6;
-		    background-image: -webkit-linear-gradient(top, #2FC8F6, #4036D0);
-		    background-image: -moz-linear-gradient(top, #2FC8F6, #4036D0);
-		    background-image: -ms-linear-gradient(top, #2FC8F6, #4036D0);
-		    background-image: -o-linear-gradient(top, #2FC8F6, #4036D0);
-		    background-image: linear-gradient(to bottom, #2FC8F6, #4036D0);
-		    -webkit-border-radius: 20px;
-		    -moz-border-radius: 20px;
-		    border-radius: 20px;
-		    height: 19px;
-		    line-height: 19px;
-		    color: #FFFFFF;
-		    font-family: Open Sans;
-		    width: 147px;
-		    font-size: 18px;
-		    font-weight: 100;
-		    padding: 6px;
-		    box-shadow: 1px 1px 20px 0px #000000;
-            webkit-box-shadow: 1px 1px 20px 0px #000000;
-            -moz-box-shadow: 1px 1px 20px 0px #000000;
-            text-shadow: 1px 1px 20px #000000;
-            border: solid #337FED 1px;
-            text-decoration: none;
-            display: inline-block;
-            cursor: pointer;
-		}
-		.switch {
-			margin-left:10px;
-			height:4vw;
-		}
-		.rotateimg180 {
-			-webkit-transform:rotate(0deg);
-			-moz-transform: rotate(0deg);
-			-ms-transform: rotate(0deg);
-			-o-transform: rotate(0deg);
-			transform: rotate(0deg);
-		}
-		/* EG4 power-flow tile (div#eg4); opens eg4.html when clicked */
-		#eg4 { cursor: pointer; }
-		#eg4 svg { display: block; width: 100%; margin: auto; font-family: sans-serif; }
-		#eg4 .box { fill: #fcfcfb; stroke: #c3c2b7; stroke-width: 1; }
-		#eg4 .active .box { stroke: #2a78d6; stroke-width: 1.5; }
-		#eg4 .name { fill: #52514e; font-size: 11px; text-anchor: middle; }
-		#eg4 .val { fill: #0b0b0b; font-size: 17px; font-weight: bold; text-anchor: middle; }
-		#eg4 .note { fill: #898781; font-size: 10px; text-anchor: middle; }
-		#eg4 .wire { fill: none; stroke: #d6d5cf; stroke-width: 3; }
-		#eg4 .wire.on { stroke: #2a78d6; stroke-dasharray: 2 8; stroke-linecap: round; animation: eg4flow 1s linear infinite; }
-		#eg4 .wire.on.rev { animation-direction: reverse; }
-		#eg4 .socfill { fill: #2a78d6; opacity: 0.18; }
-		#eg4.stale .val { fill: #898781; }
-		@keyframes eg4flow { to { stroke-dashoffset: -10; } }
-		@media (prefers-reduced-motion: reduce) { #eg4 .wire.on { animation: none; stroke-dasharray: none; } }
-    </style>
-  </head>
-  <body>
-    <div style="height:100%;width:100%; display: grid; grid-template-rows: 33% 33% 33%">
-      <div id='temperatures' style="top:0;left:0;margin:0; display: grid; grid-template-columns: 20vw 20vw 20vw 20vw 20vw; grid-template-rows: auto">
-        <div class="centered" style="display: grid; grid-template-rows: auto 3em">
-            <div id="SolarPumpContainer">
-                <div id='SolarPump' style='margin-left:0;margin-right:0;margin-top:1%;margin-bottom:0' onclick="window.open('trackers/solarPump.html')"></div>
-            </div>
-            <div id='Heater' style='margin-left:5%;margin-right:5%;margin-top:1%;margin-bottom:0;height:2em'>
-              <p style="text-align:center; margin-top:0; margin-bottom:0; font-size:x-small">Cabinet Fans <span id=fanStatus>?</span></p>
-              <p style="text-align:center; margin-top:0; margin-bottom:0; font-size:x-small"><a href="ac_control.php">AC <span id=acStatus>?</span></a></p>
-            </div>
-        </div>
-        <div class="centered" onclick="window.open('trackers/solar_temps.html')">
-          <div id='SolarTemps'></div>
-        </div>
-        <div class="centered" onclick="window.open('trackers/solar.html')">
-          <div style="width:100%; height:90%;margin-left:auto;margin-right:auto;font-size:x-small">
-              <div id='Solar'>Solar Output</div>
-          </div>
-          <div id='GeneratorStatus' style='width:100%; height:1em; text-align:center; font-size:x-small'>Generator Status</div>
-        </div>
-        <div class="centered" onclick="window.open('trackers/ac_temps.html')">
-            <div style="width:100%; height:90%;margin-left:auto;margin-right:auto;font-size:x-small">
-                <div id='AC'>Air Conditioning</div>
-            </div>
-        </div>
-        <div class="centered">
-            <div>
-                <button class="BUTTON_JKX" type="button" onClick="reloadPage();">Reload this page</button><br />
-                <a href="/logging">Logging</a>
-            </div>
-            <div>
-                <table id="bmsData">
-                    <thead>
-                        <tr>
-                            <th>BMS Data</th><th>Value</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        <tr>
-                            <td title="Cloud Energy Battery State of Charge">SOC</td><td><span id="socVal"></span></td>
-                        </tr><tr>
-                            <td title="Cloud Energy Battery State of Health">SOH</td><td><span id="sohVal"></span></td>
-                        </tr><tr>
-                            <td title="Cloud Energy Battery Voltage">Battery Voltage</td><td><span id="vbatVal"></span></td>
-                        </tr><tr>
-                            <td title="Cloud Energy Battery current">Battery Current</td><td><span id="ibatVal"></span></td>
-                        </tr><tr>
-                            <td title="Cloud Energy Battery Power">Battery Power</td><td><span id="battPowerText"></span></td>
-                        </tr><tr>
-                            <td title="Cloud Energy Battery Temperature">Battery Temperature</td><td><span id="tbatVal"></span></td>
-                        </tr><tr>
-                            <td title="Cloud Energy Battery Maximum Charge Voltage">Charge Volts</td><td><span id="chargeVoltsVal"></span></td>
-                        </tr><tr>
-                            <td title="Cloud Energy Battery Miniumum Discharge Voltage">Discharge Volts</td><td><span id="dischargeVoltsVal"></span></td>
-                        </tr><tr>
-                            <td title="Cloud Energy Battery Maximum Charge Current">Max Charge Amps</td><td><span id="maxChargeAmpsVal"></span></td>
-                        </tr><tr>
-                            <td title="Cloud Energy Battery Maximum Discharge Current">Max Discharge Amps</td><td><span id="maxDischargeAmpsVal"></span></td>
-                        </tr><tr>
-                            <td title="Sunny Island DC current">SI-IBat</td><td><span id="siIbatVal"></span></td>
-                        </tr><tr>
-                            <td title="Avg DC current">Average IBat</td><td><span id="avgIbatVal"></span></td>
-                        </tr>
-                    </tbody>
-                </table>
-            </div>
-        </div>
-      </div>
-      <div style="display: grid; grid-template-columns: 20% 20% 20% 20% 20%; border-top-color: black;border-top-width: 1px; border-top-style: solid;border-bottom-color: black;border-bottom-width: 1px; border-bottom-style: solid;">
-          <div class="centered" onclick="window.open('trackers/hot_tank.html')">
-              <div id='HotTank'></div>
-          </div>
-          <div class="centered"  onclick="window.open('trackers/buffer_tank.html')">
-              <div id='BufferTank'></div>
-          </div>
-        <div class="centered"  onclick="window.open('trackers/loop_temps.html')">
-      	  <div id='ChillerLoop'></div>
-        </div>
-        <div class="centered" onclick="window.open('trackers/inverterPower.html')">
-          <div id='InverterPower'></div>
-        </div>
-          <div class="centered" onclick="window.open('eg4.html')">
-              <div id="eg4" title="EG4 inverters - click for details">
-                <svg viewBox="0 0 200 200" role="img" aria-label="EG4 power flow: solar, battery and load">
-                    <path id="eg4wSolar" class="wire" d="M100 50 V82"/>
-                    <path id="eg4wBatt" class="wire" d="M75 100 H45 V138"/>
-                    <path id="eg4wLoad" class="wire" d="M125 100 H155 V138"/>
-                    <g id="eg4nSolar">
-                        <rect class="box" x="50" y="4" width="100" height="46" rx="6"/>
-                        <text class="name" x="100" y="19">Solar</text>
-                        <text class="val" id="eg4Solar" x="100" y="40">&ndash;</text>
-                    </g>
-                    <g>
-                        <rect class="box" x="75" y="84" width="50" height="32" rx="6"/>
-                        <text class="note" x="100" y="104">Inverters</text>
-                    </g>
-                    <g id="eg4nBatt">
-                        <rect class="box" x="4" y="140" width="82" height="56" rx="6"/>
-                        <rect class="socfill" id="eg4SocFill" x="5" y="195" width="80" height="0" rx="5"/>
-                        <text class="name" x="45" y="154">Battery</text>
-                        <text class="val" id="eg4Soc" x="45" y="174">&ndash;</text>
-                        <text class="note" id="eg4Batt" x="45" y="189"></text>
-                    </g>
-                    <g id="eg4nLoad">
-                        <rect class="box" x="114" y="140" width="82" height="56" rx="6"/>
-                        <text class="name" x="155" y="154">Load</text>
-                        <text class="val" id="eg4Load" x="155" y="174">&ndash;</text>
-                        <text class="note" id="eg4Status" x="155" y="189"></text>
-                    </g>
-                </svg>
-              </div>
-          </div>
-      </div>
-      <div id='inverterValues' style="display: grid; grid-template-columns: 20% 20% 20% 20% 20%">
-        <div class="centered">
-            <div id="Tesla" onClick="window.open('trackers/Tesla.html')">Tesla</div>
-            <div style="text-align: center;"><a href="http://aberhome1.local:8080/getTeslaKeys">Set Tesla Tokens</a></div>
-            <div style="text-align: center;"><a href="http://aberhome1.local:8080/startCharging" target="_blank">Start</a>&nbsp;&lt;--Charging--&gt;&nbsp;<a href="http://aberhome1.local:8080/stopCharging" target="_blank">Stop</a></div>
-        </div>
-        <div class="centered">
-            <div id='AuxHeater' >Heater</div>
-            <div style='height:1.5em; font-size:x-small; font-weight: bold; text-align: center'>
-                <p>Aux Heat&nbsp;<span id=heaterStatus>?</span></p>
-            </div>
-        </div>
-		<div class="centered">
-			<div onclick="window.open('trackers/water_heater.html')" id='InverterVolts'>Battery Volts</div>
-			<div style="height:3em; text-align:center">
-				<a href="ChargeParams" style="font-size:x-small">Charge Parameters</a><br />
-				<span id="vBattDeltaMin" style="color:green;font-size:x-small">0</span> : <span id="vBattDelta" style="color:blue;font-size:x-small">0</span> : <span id="vBattDeltaMax" style="color:red;font-size:x-small">0</span>
-			</div>
-		</div>
-		<div class="centered">
-            <div class="centered" style="padding-left: 3em">
-    			<div id='InverterCurrent' onclick="window.open('trackers/charging.html')" >Inverter Current</div>
-            </div>
-			<div style="height:1.5em">
-				<div id='InverterFrequency' style='margin-left:auto;margin-right:auto;text-align:center'>Frequency (50Hz)</div>
-			</div>
-        </div>
-		<div class="centered" onclick="window.open('trackers/charging.html')">
-			<div id='InverterSoc' style='margin-left:auto;margin-right:auto;'>Inverter SOC</div>
-			<div style="height:1.5em; text-align:center">
-				<span id='soc' style='font-size:x-small; font-weight:bold'>SOC</span>
-			</div>
-        </div>
+    <div class="card">
+      <h2>Battery BMS</h2>
+      <div class="tablewrap">
+        <table>
+          <tbody id="bmsTable"></tbody>
+        </table>
       </div>
     </div>
-  </body>
-  <script type="text/javascript">
-		setUpGauges();
-		getData();
-		getRealTimeData();
-		// ---- EG4 power-flow tile ----
-		// Live readings come from the controller's Server-Sent Events stream
-		// (/realtime/eg4Events); browsers without EventSource poll /realtime/getEG4.
-		var eg4LastSeen = 0;
+  </div>
+</main>
 
-		function eg4Watts(w) {
-			w = Math.abs(w || 0);
-			return w >= 1000 ? (w / 1000).toFixed(1) + ' kW' : Math.round(w) + ' W';
-		}
+<script src="scripts/sc.js"></script>
+<script>
+(function () {
+  "use strict";
+  const { $, h, fmt, fmtW, isNum } = SC;
+  const STALE_MS = 60000;
 
-		// Shows or hides a wire's moving dots. reverse runs them against the
-		// path's drawn direction; faster dots mean more power.
-		function eg4Wire(id, watts, reverse) {
-			var el = document.getElementById(id);
-			var on = Math.abs(watts) > 20;
-			el.classList.toggle('on', on);
-			el.classList.toggle('rev', on && reverse);
-			el.style.animationDuration = Math.max(0.35, 1.6 - Math.abs(watts) / 8000) + 's';
-		}
+  // label | meter | value rows. items: [{label, value, min, max, unit, decimals, text, centre}]
+  // centre draws the bar out from the middle of the meter, for values that can be negative.
+  function rows(id, items, scale) {
+    const box = $(id);
+    const want = items.length * 3 + (scale ? 1 : 0);
+    if (box.childElementCount !== want || box.dataset.labels !== items.map((i) => i.label).join("|")) {
+      box.textContent = "";
+      box.dataset.labels = items.map((i) => i.label).join("|");
+      for (const it of items) {
+        box.appendChild(h("span", { class: "r-label" }, it.label));
+        const m = h("span", { class: "meter" + (it.centre ? " mark" : "") }); m.appendChild(h("i"));
+        box.appendChild(m);
+        box.appendChild(h("span", { class: "r-val" }));
+      }
+      if (scale) {
+        const s = h("span", { class: "scale" });
+        s.append(h("span", {}, scale[0]), h("span", {}, scale[1]));
+        box.appendChild(s);
+      }
+    }
+    items.forEach((it, i) => {
+      const bar = box.children[i * 3 + 1].firstChild, val = box.children[i * 3 + 2];
+      const f = isNum(it.value) ? Math.max(0, Math.min(1, (it.value - it.min) / (it.max - it.min))) : 0;
+      if (it.centre) {
+        bar.style.left = Math.min(f, 0.5) * 100 + "%";
+        bar.style.width = Math.abs(f - 0.5) * 100 + "%";
+      } else {
+        bar.style.width = f * 100 + "%";
+      }
+      val.textContent = it.text != null ? it.text : fmt(it.value, it.decimals == null ? 1 : it.decimals, it.unit);
+    });
+  }
 
-		function eg4Show(sr) {
-			eg4LastSeen = Date.now();
-			document.getElementById('eg4').classList.remove('stale');
-			var solar = (sr.PVPower || 0) + (sr.ACCouplePower || 0);
-			var load = sr.LoadPower || 0;
-			var batt = sr.BatteryPower || 0;   // positive while charging
-			var soc = Math.max(0, Math.min(100, sr.SOC || 0));
+  function kv(id, pairs) {
+    const box = $(id);
+    box.textContent = "";
+    for (const [k, v] of pairs) {
+      box.appendChild(h("span", {}, k));
+      if (v instanceof Node) { const s = h("span"); s.appendChild(v); box.appendChild(s); }
+      else box.appendChild(h("span", {}, v));
+    }
+  }
 
-			document.getElementById('eg4Solar').textContent = eg4Watts(solar);
-			document.getElementById('eg4Load').textContent = eg4Watts(load);
-			document.getElementById('eg4Soc').textContent = Math.round(soc) + '%';
-			document.getElementById('eg4Batt').textContent =
-				Math.abs(batt) <= 20 ? 'Idle' : (batt > 0 ? 'Charging ' : 'Discharging ') + eg4Watts(batt);
-			var fill = document.getElementById('eg4SocFill');
-			fill.setAttribute('height', 54 * soc / 100);
-			fill.setAttribute('y', 195 - 54 * soc / 100);
+  function onOff(on) { return h("span", { class: "onoff" + (on ? " on" : "") }, on ? "On" : "Off"); }
 
-			var errs = sr.Errors ? Object.keys(sr.Errors) : [];
-			document.getElementById('eg4Status').textContent = errs.length ? errs.join(', ') + ' not answering' : '';
+  function big(id, value, small) {
+    const e = $(id);
+    e.textContent = value;
+    if (small) e.appendChild(h("small", {}, " " + small));
+  }
 
-			document.getElementById('eg4nSolar').classList.toggle('active', solar > 20);
-			document.getElementById('eg4nLoad').classList.toggle('active', load > 20);
-			document.getElementById('eg4nBatt').classList.toggle('active', Math.abs(batt) > 20);
-			eg4Wire('eg4wSolar', solar, false);
-			eg4Wire('eg4wLoad', load, false);
-			eg4Wire('eg4wBatt', batt, batt < 0);
-		}
+  // Greys a card and says when it was last updated if its reading is old.
+  function staleNote(card, noteEl, time, what) {
+    const old = !isNum(time) || Date.now() - time > STALE_MS;
+    card.classList.toggle("stale", old);
+    if (old) SC.setStatus(noteEl, "warn", isNum(time) ? what + " last updated at " + SC.clockS(time) : "No " + what.toLowerCase() + " yet");
+    return old;
+  }
 
-		// No reading for 30 s: grey the values and stop the dots.
-		function eg4CheckStale() {
-			if (Date.now() - eg4LastSeen > 30000) {
-				document.getElementById('eg4').classList.add('stale');
-				document.getElementById('eg4Status').textContent = 'No data';
-				['eg4wSolar', 'eg4wBatt', 'eg4wLoad'].forEach(function(id) { eg4Wire(id, 0, false); });
-			}
-		}
+  const temp = (label, value, min, max) => ({ label, value, min, max, unit: "°C" });
 
-		function eg4Poll() {
-			fetch('/realtime/getEG4')
-				.then(function(response) { if (response.status === 200) return response.json().then(eg4Show); })
-				.catch(function(err) { console.log('EG4 fetch error: ' + err); });
-			setTimeout(eg4Poll, 5000);
-		}
+  // ---------- EG4 ----------
+  function wire(id, watts, reverse) {
+    const e = $(id), on = Math.abs(watts) > 20;
+    e.classList.toggle("on", on);
+    e.classList.toggle("rev", on && !!reverse);
+    e.style.animationDuration = Math.max(0.35, 1.6 - Math.abs(watts) / 8000) + "s";
+  }
+  function showEG4(g) {
+    const old = staleNote($("eg4Card"), $("eg4Stale"), g && g.time, "EG4 reading");
+    if (!g) return;
+    const solar = (g.pv || 0) + (g.acCouple || 0), load = g.load || 0, batt = g.battery || 0;
+    const soc = Math.max(0, Math.min(100, g.soc || 0));
+    $("eg4Solar").textContent = fmtW(solar);
+    $("eg4Load").textContent = fmtW(load);
+    $("eg4Soc").textContent = Math.round(soc) + "%";
+    $("eg4Batt").textContent = Math.abs(batt) <= 20 ? "Idle" : (batt > 0 ? "Charging " : "Discharging ") + (Math.abs(batt) / 1000).toFixed(1) + " kW";
+    $("eg4SocFill").setAttribute("height", 54 * soc / 100);
+    $("eg4SocFill").setAttribute("y", 195 - 54 * soc / 100);
+    $("eg4Note").textContent = g.notAnswering && g.notAnswering.length ? g.notAnswering.join(", ") + " not answering" : "";
+    $("eg4nSolar").classList.toggle("active", !old && solar > 20);
+    $("eg4nLoad").classList.toggle("active", !old && load > 20);
+    $("eg4nBatt").classList.toggle("active", !old && Math.abs(batt) > 20);
+    wire("eg4wSolar", old ? 0 : solar);
+    wire("eg4wLoad", old ? 0 : load);
+    wire("eg4wBatt", old ? 0 : batt, batt < 0);
+  }
 
-		function eg4Start() {
-			var svg = document.querySelector('#eg4 svg');
-			svg.style.height = Math.max(120, $('#temperatures').height() - 10) + 'px';
-			svg.style.maxWidth = (window.innerWidth / 5 - 10) + 'px';
-			if (window.EventSource) {
-				new EventSource('/realtime/eg4Events').onmessage = function(e) {
-					try { eg4Show(JSON.parse(e.data)); } catch (err) { console.log('EG4 event error: ' + err); }
-				};
-			} else {
-				eg4Poll();
-			}
-			setInterval(eg4CheckStale, 5000);
-		}
-		eg4Start();
-		setTimeout(reloadPage, 900000);	// Reload the page every 15 minutes
-  </script>
+  // ---------- solar strings ----------
+  // Strings in the order the monitor reports them (A..K) and their names on the inverters.
+  const STRING_NAMES = ["2-A", "2-B", "2-C", "3-A", "3-B", "3-C", "4-A", "4-B", "4-C", "1-A", "1-B"];
+  function showSolar(s) {
+    staleNote($("solarCard"), $("solarStale"), s && s.time, "Solar reading");
+    if (!s) return;
+    big("solarTotal", fmtW(s.total));
+    const items = s.strings.map((st, i) => ({ label: "Inverter " + (STRING_NAMES[i] || i + 1), value: st.watts, min: 0, max: 3400,
+      text: fmtW(st.watts) }));
+    items.sort((a, b) => a.label.localeCompare(b.label));
+    rows("solarRows", items, ["0", "3.4 kW"]);
+  }
+
+  // ---------- one status message ----------
+  function show(m) {
+    const inv = m.inverter, bms = m.bms;
+
+    // House battery
+    big("battSoc", fmt(inv.soc, 0, "%"), "charged");
+    const battKW = bms.iBat * inv.vBatt / 1000;
+    $("battFlow").textContent = Math.abs(bms.iBat) < 0.5 ? "Idle"
+      : (bms.iBat > 0 ? "Charging " : "Discharging ") + Math.abs(battKW).toFixed(2) + " kW (" + Math.abs(bms.iBat).toFixed(1) + " A)";
+    rows("battRows", [
+      { label: "SOC", value: inv.soc, min: 0, max: 100, unit: "%", decimals: 0 },
+      { label: "Current", value: bms.iBat, min: -350, max: 350, unit: "A", centre: true },
+    ], ["−350 A", "+350 A"]);
+
+    // Sunny Island inverters
+    big("invPower", fmt(inv.power, 2), "kW");
+    $("invGen").textContent = "";
+    if (inv.generatorRunning) SC.setStatus($("invGen"), "warn", "Generator running");
+    else $("invGen").textContent = "Generator stopped";
+    kv("invKV", [
+      ["Frequency", fmt(inv.frequency, 2, "Hz")],
+      ["Battery current (+ discharging)", fmt(inv.iBatt, 1, "A")],
+      ["Average battery current", fmt(inv.iBattAvg, 1, "A")],
+    ]);
+
+    // Battery voltage
+    big("voltBig", fmt(inv.vBatt, 2, "V"), "setpoint " + fmt(inv.vSetpoint, 2, "V"));
+    kv("voltKV", [
+      ["Setpoint − battery", fmt(inv.vSetpoint - inv.vBatt, 2, "V")],
+      ["Lowest difference", fmt(inv.vBattDeltaMin, 2, "V")],
+      ["Highest difference", fmt(inv.vBattDeltaMax, 2, "V")],
+      ["Auxiliary heater", onOff(m.equipment.auxHeat)],
+    ]);
+
+    // Temperatures
+    const t = m.temps;
+    document.querySelectorAll("[data-temps]").forEach((c) => staleNote(c, c.querySelector(".stale-note"), t && t.time, "Temperature"));
+    if (t) {
+      const trigger = (3 * t.hotTankTop + 2 * t.hotTankMiddle + t.hotTankBottom) / 6;
+      big("hotTrigger", fmt(trigger, 1, "°C"), "weighted");
+      rows("hotRows", [temp("Top", t.hotTankTop, 40, 100), temp("Middle", t.hotTankMiddle, 40, 100), temp("Bottom", t.hotTankBottom, 40, 100)], ["40", "100 °C"]);
+      rows("bufferRows", [temp("Top", t.bufferTankTop, 0, 60), temp("Middle", t.bufferTankMiddle, 0, 60), temp("Bottom", t.bufferTankBottom, 0, 60)], ["0", "60 °C"]);
+      rows("solarTempRows", [temp("Collector", t.solarCollector, 0, 120), temp("Inlet", t.solarInlet, 0, 120), temp("Outlet", t.solarOutlet, 0, 120)], ["0", "120 °C"]);
+      rows("loopRows", [temp("Ground loop in", t.groundLoopIn, 0, 40), temp("Ground loop out", t.groundLoopOut, 0, 40),
+                        temp("To house", t.toHouse, 0, 40), temp("From house", t.fromHouse, 0, 40),
+                        temp("Chiller out", t.chillerOut, 0, 40), temp("Bypass", t.bypass, 0, 40)], ["0", "40 °C"]);
+      rows("acRows", [temp("Mats input", t.matsInput, 0, 60), temp("Mats output", t.matsOutput, 0, 60),
+                      temp("Dehumidifier output", t.dehumidifierOutput, 0, 60)], ["0", "60 °C"]);
+    }
+    kv("equipKV", [["Air conditioning", onOff(m.equipment.ac)], ["Cabinet fans", onOff(m.equipment.fans)]]);
+
+    // Solar pump
+    big("pumpBig", fmt(m.solarPump, 0, "%"), "speed");
+    rows("pumpRows", [{ label: "Speed", value: m.solarPump, min: 0, max: 100, unit: "%", decimals: 0 }], null);
+
+    // Tesla
+    const car = m.tesla.cars[0];
+    $("teslaNote").textContent = "";
+    if (!car) {
+      big("teslaBig", "–");
+      SC.setStatus($("teslaNote"), "error", "No wall charger is talking to the controller");
+      rows("teslaRows", [], null);
+    } else {
+      const charging = /^Charging/.test(car.status);
+      const status = car.status + (car.stopped ? " (stopped)" : "");
+      if (charging) { big("teslaBig", (car.current * 0.24).toFixed(2) + " kW"); $("teslaNote").textContent = status; }
+      else big("teslaBig", status);
+      rows("teslaRows", [
+        { label: "Available", value: m.tesla.maxAmps, min: 0, max: 48, unit: "A" },
+        { label: "Charging", value: car.current, min: 0, max: 48, unit: "A" },
+      ], ["0", "48 A"]);
+    }
+
+    // BMS
+    const tb = $("bmsTable");
+    tb.textContent = "";
+    for (const [k, v] of [
+      ["State of charge", fmt(bms.soc, 0, "%")], ["State of health", fmt(bms.soh, 0, "%")],
+      ["Voltage", fmt(bms.vBat, 2, "V")], ["Current (+ charging)", fmt(bms.iBat, 1, "A")],
+      ["Temperature", fmt(bms.tBat, 1, "°C")],
+      ["Charge voltage", fmt(bms.chargeVolts, 2, "V")], ["Discharge voltage", fmt(bms.dischargeVolts, 2, "V")],
+      ["Max charge current", fmt(bms.chargeCurrentMax, 0, "A")], ["Max discharge current", fmt(bms.dischargeCurrentMax, 0, "A")],
+    ]) {
+      const tr = h("tr"); tr.append(h("td", {}, k), h("td", {}, v)); tb.appendChild(tr);
+    }
+
+    showSolar(m.solar);
+    showEG4(m.eg4);
+  }
+
+  let last = null;
+  SC.stream({
+    url: "/realtime/statusEvents",
+    pollUrl: "/realtime/getStatus",
+    onState: (kind, text) => SC.setStatus($("status"), kind, text),
+    onMessage: (m) => { last = m; show(m); },
+  });
+  // Re-check how old each reading is even when no message arrives.
+  setInterval(() => { if (last) show(last); }, 5000);
+})();
+</script>
+</body>
 </html>

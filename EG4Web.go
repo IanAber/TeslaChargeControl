@@ -2,7 +2,6 @@ package main
 
 import (
 	"encoding/json"
-	"fmt"
 	"log"
 	"net/http"
 	"strconv"
@@ -14,14 +13,13 @@ import (
 )
 
 // The most recent EG4 reading, updated by Read12000XP after every poll that
-// got an answer from at least one inverter, and the clients listening for it
-// on /realtime/eg4Events.
+// got an answer from at least one inverter, and the hub that pushes it to
+// clients of /realtime/eg4Events.
 var (
 	latestEG4Mu sync.RWMutex
 	latestEG4   *EG4.SystemReading
 
-	eg4SubsMu sync.Mutex
-	eg4Subs   = map[chan []byte]struct{}{}
+	eg4Hub = newEventHub()
 )
 
 // setLatestEG4 stores a new reading and pushes it to every event-stream client.
@@ -35,14 +33,7 @@ func setLatestEG4(sr *EG4.SystemReading) {
 		log.Println("setLatestEG4() - ", err)
 		return
 	}
-	eg4SubsMu.Lock()
-	for ch := range eg4Subs {
-		select {
-		case ch <- msg:
-		default: // client is not keeping up; it gets the next one
-		}
-	}
-	eg4SubsMu.Unlock()
+	eg4Hub.Publish(msg)
 }
 
 // eg4Response is the JSON form of a reading used by getEG4 and the event
@@ -89,72 +80,10 @@ func getEG4(w http.ResponseWriter, r *http.Request) {
 }
 
 // eg4Events streams EG4 readings as Server-Sent Events. Each event's data is
-// the same JSON that getEG4 returns. The latest reading is sent as soon as the
-// client connects, then every new reading as it is polled. A comment line is
-// sent every 25 s so idle connections are not dropped by proxies.
+// the same JSON that getEG4 returns: the latest reading as soon as the client
+// connects, then every new reading as it is polled.
 func eg4Events(w http.ResponseWriter, r *http.Request) {
-	flusher, ok := w.(http.Flusher)
-	if !ok {
-		http.Error(w, "Streaming is not supported.", http.StatusInternalServerError)
-		return
-	}
-	h := w.Header()
-	h.Set("Access-Control-Allow-Origin", "*")
-	h.Set("Content-Type", "text/event-stream")
-	h.Set("Cache-Control", "no-cache")
-	h.Set("Connection", "keep-alive")
-	h.Set("X-Accel-Buffering", "no")
-
-	ch := make(chan []byte, 4)
-	eg4SubsMu.Lock()
-	eg4Subs[ch] = struct{}{}
-	eg4SubsMu.Unlock()
-	defer func() {
-		eg4SubsMu.Lock()
-		delete(eg4Subs, ch)
-		eg4SubsMu.Unlock()
-	}()
-
-	send := func(msg []byte) bool {
-		if _, err := fmt.Fprintf(w, "data: %s\n\n", msg); err != nil {
-			return false
-		}
-		flusher.Flush()
-		return true
-	}
-
-	// Ask the browser to wait 5 s before reconnecting, then send what we have.
-	if _, err := fmt.Fprint(w, "retry: 5000\n\n"); err != nil {
-		return
-	}
-	latestEG4Mu.RLock()
-	sr := latestEG4
-	latestEG4Mu.RUnlock()
-	if sr != nil {
-		msg, err := json.Marshal(eg4Response(sr))
-		if err == nil && !send(msg) {
-			return
-		}
-	}
-	flusher.Flush()
-
-	keepAlive := time.NewTicker(25 * time.Second)
-	defer keepAlive.Stop()
-	for {
-		select {
-		case <-r.Context().Done():
-			return
-		case msg := <-ch:
-			if !send(msg) {
-				return
-			}
-		case <-keepAlive.C:
-			if _, err := fmt.Fprint(w, ": keep-alive\n\n"); err != nil {
-				return
-			}
-			flusher.Flush()
-		}
-	}
+	eg4Hub.ServeHTTP(w, r)
 }
 
 // eg4Sample is one point in the history returned by getEG4History, with the

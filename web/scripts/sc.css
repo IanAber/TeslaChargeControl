@@ -1,0 +1,143 @@
+/* Shared styles for the SystemController pages (status page and trackers). */
+:root {
+  color-scheme: light;
+  --page:           #f9f9f7;
+  --surface-1:      #fcfcfb;
+  --text-primary:   #0b0b0b;
+  --text-secondary: #52514e;
+  --text-muted:     #898781;
+  --grid:           #e1e0d9;
+  --axis:           #c3c2b7;
+  --border:         rgba(11,11,11,0.10);
+  --idle:           #d6d5cf;
+  --flow:           #2a78d6;
+  --series-1:       #2a78d6;
+  --series-2:       #eb6834;
+  --series-3:       #1baf7a;
+  --series-4:       #eda100;
+  --series-5:       #e87ba4;
+  --series-6:       #008300;
+  --series-7:       #6250d6;
+  --series-8:       #e34948;
+  --good:           #0ca30c;
+  --warning:        #fab219;
+  --serious:        #ec835a;
+  --critical:       #d03b3b;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    color-scheme: dark;
+    --page:           #0d0d0d;
+    --surface-1:      #1a1a19;
+    --text-primary:   #f0efec;
+    --text-secondary: #c3c2b7;
+    --text-muted:     #898781;
+    --grid:           #2c2c2a;
+    --axis:           #383835;
+    --border:         rgba(255,255,255,0.10);
+    --idle:           #383835;
+    --flow:           #3987e5;
+    --series-1:       #3987e5;
+    --series-2:       #d95926;
+    --series-3:       #199e70;
+    --series-4:       #c98500;
+    --series-5:       #d55181;
+    --series-6:       #008300;
+    --series-7:       #9085e9;
+    --series-8:       #e66767;
+  }
+}
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --page:           #0d0d0d;
+  --surface-1:      #1a1a19;
+  --text-primary:   #f0efec;
+  --text-secondary: #c3c2b7;
+  --text-muted:     #898781;
+  --grid:           #2c2c2a;
+  --axis:           #383835;
+  --border:         rgba(255,255,255,0.10);
+  --idle:           #383835;
+  --flow:           #3987e5;
+  --series-1:       #3987e5;
+  --series-2:       #d95926;
+  --series-3:       #199e70;
+  --series-4:       #c98500;
+  --series-5:       #d55181;
+  --series-6:       #008300;
+  --series-7:       #9085e9;
+  --series-8:       #e66767;
+}
+
+* { box-sizing: border-box; }
+body {
+  margin: 0;
+  background: var(--page);
+  color: var(--text-primary);
+  font: 14px/1.4 system-ui, -apple-system, "Segoe UI", sans-serif;
+}
+main { max-width: 1400px; margin: 0 auto; padding: 16px; }
+header { display: flex; flex-wrap: wrap; align-items: baseline; gap: 8px 16px; margin-bottom: 12px; }
+header nav { margin-left: auto; display: flex; flex-wrap: wrap; gap: 4px 14px; font-size: 13px; }
+a { color: var(--flow); }
+h1 { font-size: 20px; font-weight: 600; margin: 0; }
+h2 { font-size: 15px; font-weight: 600; margin: 0 0 2px; }
+.sub { color: var(--text-secondary); font-size: 13px; margin: 0 0 8px; }
+.muted { color: var(--text-muted); }
+.status { display: inline-flex; align-items: center; gap: 6px; color: var(--text-secondary); font-size: 13px; }
+.status svg { flex: none; }
+
+.controls { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; margin: 0 0 12px; }
+.controls label { color: var(--text-secondary); font-size: 13px; }
+.controls input, .controls select, .controls button.btn {
+  font: inherit; font-size: 13px; color: var(--text-primary); background: var(--surface-1);
+  border: 1px solid var(--border); border-radius: 8px; padding: 4px 8px;
+}
+.controls button.btn { cursor: pointer; }
+.seg { display: inline-flex; flex-wrap: wrap; border: 1px solid var(--border); border-radius: 8px; overflow: hidden; background: var(--surface-1); }
+.seg button {
+  font: inherit; font-size: 13px; color: var(--text-secondary); background: none;
+  border: 0; padding: 4px 10px; cursor: pointer;
+}
+.seg button + button { border-left: 1px solid var(--border); }
+.seg button[aria-pressed="true"] { color: var(--text-primary); font-weight: 600; background: var(--grid); }
+
+.card {
+  display: block; background: var(--surface-1); border: 1px solid var(--border); border-radius: 12px;
+  padding: 14px 16px; margin-bottom: 16px; min-width: 0; color: inherit; text-decoration: none;
+}
+a.card:hover, a.card:focus-visible { border-color: var(--flow); outline: none; }
+.card-head { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; }
+.card-head .more { font-size: 12px; color: var(--text-muted); white-space: nowrap; }
+a.card:hover .more { color: var(--flow); }
+
+.legend { display: flex; flex-wrap: wrap; gap: 4px 14px; margin: 4px 0 6px; font-size: 12px; color: var(--text-secondary); }
+.legend span { display: inline-flex; align-items: center; gap: 6px; }
+.legend svg { flex: none; }
+
+.chart { position: relative; }
+.chart svg.plot { display: block; width: 100%; overflow: visible; }
+.chart svg.plot:focus { outline: none; }
+.chart svg.plot:focus-visible { outline: 2px solid var(--flow); outline-offset: 2px; border-radius: 4px; }
+.chart .mini-title { font-size: 12px; color: var(--text-secondary); margin: 6px 0 0; }
+.chart .mini-title b { color: var(--text-primary); font-weight: 600; }
+.tick { font-size: 11px; fill: var(--text-muted); font-variant-numeric: tabular-nums; }
+.empty { font-size: 13px; fill: var(--text-muted); }
+
+.tip {
+  position: absolute; pointer-events: none; z-index: 2; display: none;
+  background: var(--surface-1); border: 1px solid var(--border); border-radius: 8px;
+  box-shadow: 0 4px 16px rgba(0,0,0,0.12); padding: 6px 10px; font-size: 12px; white-space: nowrap;
+}
+.tip .t { color: var(--text-muted); margin-bottom: 2px; }
+.tip .row { display: flex; align-items: center; gap: 8px; }
+.tip .row svg { flex: none; }
+.tip .row b { font-weight: 600; font-variant-numeric: tabular-nums; min-width: 64px; text-align: right; }
+.tip .row span { color: var(--text-secondary); }
+
+table { border-collapse: collapse; width: 100%; font-size: 13px; font-variant-numeric: tabular-nums; }
+th, td { padding: 4px 8px; text-align: right; border-bottom: 1px solid var(--grid); }
+th:first-child, td:first-child { text-align: left; }
+th { color: var(--text-secondary); font-weight: 600; }
+.tablewrap { overflow-x: auto; }
+details summary { cursor: pointer; color: var(--text-secondary); font-size: 13px; }

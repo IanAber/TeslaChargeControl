@@ -351,7 +351,7 @@ details summary { cursor: pointer; color: var(--text-secondary); font-size: 13px
     el("rect", { x: m.l - 6, y: m.t - 6, width: pw + 12, height: ph + 12 }, clip);
 
     // grid + y ticks
-    const decimalsTick = step < 1 ? (step < 0.1 ? 2 : 1) : 0;
+    const decimalsTick = step < 0.1 ? 2 : Number.isInteger(step) ? 0 : 1;
     for (let v = lo; v <= hi + step / 2; v += step) {
       const yy = Math.round(y(v)) + 0.5;
       el("line", { x1: m.l, x2: m.l + pw, y1: yy, y2: yy, stroke: Math.abs(v) < step / 2 && o.zero ? css("--axis") : css("--grid"), "stroke-width": 1 }, svg);

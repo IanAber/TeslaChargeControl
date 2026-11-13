@@ -60,8 +60,7 @@ var (
 	}
 	// EG4 parameters
 	inverterIPs string
-	every       time.Duration
-	eg4         *EG4.System
+	every       int // poll interval in seconds
 )
 
 func findSlave(slaves []twcSlave.Slave, address uint16) int {
@@ -138,8 +137,8 @@ func divideMaxAmpsAmongstSlaves(slaves []twcSlave.Slave, maxAmps uint16) {
 		maxAmps = maxAmps / activeCars
 	}
 	// Tesla can only accept charging currents from 6 amps upwards. We are trying to set a current of less
-	// than 6 amps fix it to 6 amps unless the battery state of charge is less than 50%
-	// If we end up with less than 6 amps for each car, stop charging until we have more available
+	// than 6 amps. Fix it to 6 amps unless the battery state of charge is less than 50%.
+	// If we end up with less than 6 amps for each car, stop charging until we have more available.
 	if maxAmps < 600 && maxAmps > 0 {
 		if iValues.GetSOC() >= 50 {
 			maxAmps = 600
@@ -291,7 +290,7 @@ func init() {
 	flag.StringVar(&ChargingConstantsFile, "constantsFile", "/var/www/html/params/charge_params.json", "Path of the file in which the charging constants are stored")
 
 	flag.StringVar(&inverterIPs, "inverters", "192.168.10.201,192.168.10.202", "Comma separated list of EG4 inverter IP addresses (Modbus TCP port 502, unit 1). The first is XP-1, the second XP-2, etc.")
-	flag.DurationVar(&every, "every", 10*time.Second, "poll interval")
+	flag.IntVar(&every, "every", 10, "poll interval")
 	flag.Parse()
 
 	// open log file
@@ -493,31 +492,7 @@ func logToDatabase() {
 
 func GetTemperatures() {
 	log.Println("GetTemperatures...")
-	var temperatures struct {
-		SolarCollector int16
-		SolarInlet     int16
-		SolarOutlet    int16
-		HotTankTop     int16
-		HotTankMiddle  int16
-		HotTankBottom  int16
-
-		ColdTankBottom     int16
-		ColdTankTop        int16
-		ColdTankMiddle     int16
-		MatsInput          int16
-		MatsOutput         int16
-		DehumidifierOutput int16
-		//		AmbientOutside int16 //TOU
-		//		SolarExchanger int16 //TSOS
-		//		Bedroom        int16 //TIN1
-
-		GroundLoopOut int16
-		ChillerOut    int16
-		FromHouse     int16
-		Bypass        int16
-		GroundLoopIn  int16
-		ToHouse       int16
-	}
+	var temperatures TemperatureReadings
 	esp1 := NewESPTemperature("http://ESPTEMP1")
 	esp2 := NewESPTemperature("http://ESPTEMP2")
 	esp3 := NewESPTemperature("http://ESPTEMP3")
@@ -565,6 +540,8 @@ func GetTemperatures() {
 			temperatures.GroundLoopOut = int16(temps[4] * 10)
 			temperatures.ChillerOut = int16(temps[5] * 10)
 		}
+
+		setLiveTemperatures(temperatures)
 
 		// Signal the solar pump controller that we have new values
 		solarTemps := new(SolarTemps)
@@ -632,7 +609,7 @@ func inverterConfigs(list string) ([]EG4.Config, error) {
 	const modbusPort = "502"
 	const unitID = 1
 	var cfgs []EG4.Config
-	for _, ip := range strings.Split(list, ",") {
+	for ip := range strings.SplitSeq(list, ",") {
 		ip = strings.TrimSpace(ip)
 		if ip == "" {
 			continue
@@ -652,7 +629,7 @@ func inverterConfigs(list string) ([]EG4.Config, error) {
 	return cfgs, nil
 }
 
-// A polling loop to read the EG4 12000XP inverters
+// Read12000XP polls the EG4 12000XP invertersin a loop goverend by the 'every' parameter in seconds
 func Read12000XP() {
 	cfgs, err := inverterConfigs(inverterIPs)
 	if err != nil {
@@ -669,10 +646,10 @@ func Read12000XP() {
 
 	// Send the output to Stdout
 	enc := json.NewEncoder(os.Stdout)
-	tick := time.NewTicker(every)
+	tick := time.NewTicker(time.Duration(every) * time.Second)
 	defer tick.Stop()
 	for {
-		pollCtx, cancel := context.WithTimeout(ctx, every)
+		pollCtx, cancel := context.WithTimeout(ctx, time.Duration(every)*time.Second)
 		sr, err := sys.Read(pollCtx)
 		cancel()
 		if err != nil {
@@ -707,7 +684,7 @@ func Read12000XP() {
 func main() {
 	var buf [1]byte
 	var linkReadyNum int
-	var err interface{}
+	var err any
 
 	defer func() {
 		err = port.Close()
@@ -743,6 +720,9 @@ func main() {
 	log.Println("********** CPU Temperature manager started. *********")
 
 	go Read12000XP()
+
+	// Push live values to the web pages
+	go publishStatus()
 
 	//	go LogPumps()
 

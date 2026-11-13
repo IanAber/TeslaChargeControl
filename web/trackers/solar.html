@@ -1,402 +1,70 @@
+<!doctype html>
 <html lang="en">
 <head>
-    <title id='Description'>Cedar Technology Solar Production Tracker</title>
-    <link rel="stylesheet" href="../jqwidgets/styles/jqx.base.css" type="text/css" />
-    <link rel="stylesheet" href="../jqwidgets/styles/jqx.web.css" type="text/css" />
-    <script type="text/javascript" src="../scripts/jquery-3.6.0.min.js"></script>
-    <script type="text/javascript" src="../jqwidgets/jqxcore.js"></script>
-    <script type="text/javascript" src="../jqwidgets/jqxchart.core.js"></script>
-    <script type="text/javascript" src="../jqwidgets/jqxdraw.js"></script>
-    <script type="text/javascript" src="../jqwidgets/jqxdata.js"></script>
-    <script type="text/javascript" src="../jqwidgets/jqxdatetimeinput.js"></script>
-    <script type="text/javascript" src="../jqwidgets/jqxcalendar.js"></script>
-    <script type="text/javascript">
-		var solarTimeOut;
-		var trackerURL = "../realtime/getSolar"
-
-        function buildURL() {
-            end = new Date();
-            end.setSeconds(0, 0);
-            end = new Date(end.getTime() + 60000); // add 1 minute
-            start = new Date(end - document.getElementById("timeRange").value);
-            return buildURLForTimes(start, end);
-        }
-
-        function buildURLCustomTimes() {
-            end = $("#endAt").jqxDateTimeInput('value');
-            start = $("#startAt").jqxDateTimeInput('value');
-            return buildURLForTimes(start, end);
-        }
-
-        function buildURLFocusTimes() {
-            start = range.from;
-            end = range.to;
-            return buildURLForTimes(start, end);
-        }
-
-        function buildURLDoubleFocusTimes() {
-            start = new Date();
-            end = new Date();
-            let from = range.from.getTime();
-            let to = range.to.getTime();
-            start.setTime(from - (to - from));
-            end.setTime(to + (to - from));
-            return buildURLForTimes(start, end);
-        }
-
-        function buildURLForTimes(start, end) {
-            $("#startAt").jqxDateTimeInput('setDate', start );
-            $("#endAt").jqxDateTimeInput('setDate', end );
-            url = encodeURI("/realtime/getSolar?start="
-                + start.getUTCFullYear() + "-" + (start.getUTCMonth() + 1) + "-" + start.getUTCDate() + " " + start.getUTCHours() + ":" + start.getUTCMinutes()
-                + "&end=" + end.getUTCFullYear() + "-" + (end.getUTCMonth() + 1) + "-" +  end.getUTCDate() + " " + end.getUTCHours() + ":" + end.getUTCMinutes());
-            return url;
-        }
-
-        var start = new Date();
-        start.setSeconds(0);
-        start.setMinutes(0);
-        start.setHours(0);
-        var end = new Date(start);
-        end.setHours(23);
-        end.setMinutes(59);
-        end.setSeconds(59);
-
-		function xAxisFormatFunction(value) {
-			var dt = new Date(value * 1000);
-			return dt.getHours().toLocaleString('en-US', {minimumIntegerDigits: 2, useGrouping:false}) + ":"
-														+ dt.getMinutes().toLocaleString('en-US', {minimumIntegerDigits: 2, useGrouping:false});
-		}
-
-        $(document).ready(function () {
-			var solarSettings = {
-				title: "Cedar Technology",
-				description: "Solar Array String Power Generation.",
-				enableAnimations: false,
-				animationDuration: 1000,
-				enableAxisTextAnimation: true,
-				showLegend: true,
-				padding: { left: 5, top: 5, right: 5, bottom: 5 },
-				titlePadding: { left: 90, top: 0, right: 0, bottom: 10 },
-				categoryAxis: {
-					dataField: 'logged',
-					showGridLines: false,
-					textRotationAngle: 270,
-					unitInterval: 1800,
-					formatFunction: xAxisFormatFunction
-				},
-				colorScheme: 'scheme01',
-				seriesGroups: [{
-					type: 'spline',
-					valueAxis: {
-						interval: 1,
-						gridLines: {
-							visible: true,
-							step: 1,
-						},
-						labels: {
-							formatSettings: {
-								decimalPlaces: 0,
-							},
-							visible: true,
-							step: 1,
-						},
-						minValue: 0,
-						maxValue: 3300,
-						description: 'Power in Watts',
-					},
-					series: [{
-						dataField: 'watts_j',
-						displayText: 'Inverter 1.A',
-						lineColor: '#80E080',
-						fillColor: '#80E080',
-					},					
-					{
-						dataField: 'watts_k',
-						displayText: 'Inverter 1.B',
-						lineColor: '#000000',
-						fillColor: '#101010',
-					},
-					{
-						dataField: 'watts_a',
-						displayText: 'Inverter 2.A',
-						lineColor: '#D02020',
-						fillColor: '#D02020',
-					},
-					{
-						dataField: 'watts_b',
-						displayText: 'Inverter 2.B',
-						lineColor: '#2020D0',
-						fillColor: '#2020D0',
-					},
-					{
-						dataField: 'watts_c',
-						displayText: 'Inverter 2.C',
-						lineColor: '#20D020',
-						fillColor: '#20D020',
-					},
-					{
-						dataField: 'watts_d',
-						displayText: 'Inverter 3.A',
-						lineColor: '#D0D020',
-						fillColor: '#D0D020',
-					},
-					{
-						dataField: 'watts_e',
-						displayText: 'Inverter 3.B',
-						lineColor: '#20D0D0',
-						fillColor: '#20D0D0',
-					},
-					{
-						dataField: 'watts_f',
-						displayText: 'Inverter 3.C',
-						lineColor: '#D020D0',
-						fillColor: '#D020D0',
-					},
-					{
-						dataField: 'watts_g',
-						displayText: 'Inverter 4.A',
-						lineColor: '#A0A040',
-						fillColor: '#A0A040',
-					},
-					{
-						dataField: 'watts_h',
-						displayText: 'Inverter 4.B',
-						lineColor: '#40A0A0',
-						fillColor: '#40A0A0',
-					},
-					{
-						dataField: 'watts_i',
-						displayText: 'Inverter 4.C',
-						lineColor: '#A040A0',
-						fillColor: '#A040A0',
-					}]
-				}]
-			};
-
-
-			$('#solarChartContainer').jqxChart(solarSettings);
-			solarTimeOut = setInterval(getCurrent, 15000);
-            sa = $("#startAt");
-            ea = $("#endAt")
-            sa.jqxDateTimeInput({ theme: "arctic", formatString: "F", showTimeButton: true, width: '300px', height: '25px' });
-            sa.jqxDateTimeInput({ dropDownVerticalAlignment: 'top'});
-            sa.css("float", "left");
-            ea.jqxDateTimeInput({ theme: "arctic", formatString: "F", showTimeButton: true, width: '300px', height: '25px' });
-            ea.jqxDateTimeInput({ dropDownVerticalAlignment: 'top'});
-            ea.css("float", "left");
-			getCurrent();
-		});
-
-        function getCurrent() {
-            let TimeRange = $("#timeRange");
-            let tr = parseInt(TimeRange.val());
-            if (tr === 0)  {
-                $("#customDateTimes").show();
-                $("#waiting").show();
-                refresh(buildURLCustomTimes());
-            } else if (tr === 1) {
-                $("#customDateTimes").show();
-                $("#waiting").show();
-                refresh(buildURLFocusTimes());
-                TimeRange.val(0);
-            } else if (tr === 2) {
-                $("#customDateTimes").show();
-                $("#waiting").show();
-                refresh(buildURLDoubleFocusTimes());
-                TimeRange.val(0);
-            } else {
-                $("#customDateTimes").hide();
-                $("#waiting").show();
-                refresh(buildURL());
-            }
-        }
-
-        function refresh(url) {
-			fetch(url)
-				.then( function(response) {
-					if (response.status === 200) {
-						response.json()
-							.then(function(data) {
-                                let end = Math.trunc($("#endAt").jqxDateTimeInput('value') / 1000);
-                                let start = ($("#startAt").jqxDateTimeInput('value') / 1000)
-                                let interval = Math.round((end - start) / 50);
-								switch (document.getElementById("param").value) {
-									case "current" : _description = "Current in Amps";
-													_maxValue = "10";
-													_decimalPlaces = 2;
-													_value = 'amps';
-													break;
-									case "volts" : _description = "Voltage in Volts";
-													_maxValue = "600";
-													_decimalPlaces = 0;
-													_value = 'volts';
-													break;
-									default : 	_description = "Power in Watts";
-												_maxValue = "3300";
-												_decimalPlaces = 0;
-												_value = 'watts';
-								}
-                                let chart = $('#solarChartContainer');
-                                chart.jqxChart({source:data});
-								chart.jqxChart({seriesGroups: [{
-										type: 'spline',
-										valueAxis: {
-											interval: 1,
-											gridLines: {
-												visible: true,
-												step: 1,
-											},
-											labels: {
-												formatSettings: {
-													decimalPlaces: _decimalPlaces,
-												},
-												visible: true,
-												step: 1,
-											},
-											minValue: 0,
-											maxValue: _maxValue,
-											description: _description,
-										},
-										series: [{
-											dataField: _value + '_j',
-											displayText: 'Inverter 1.A',
-											lineColor: '#80E080',
-											fillColor: '#80E080',
-										},					
-										{
-											dataField: _value + '_k',
-											displayText: 'Inverter 1.B',
-											lineColor: '#000000',
-											fillColor: '#101010',
-										},
-										{
-											dataField: _value + '_a',
-											displayText: 'Inverter 2.A',
-											lineColor: '#D02020',
-											fillColor: '#D02020',
-										},
-										{
-											dataField: _value + '_b',
-											displayText: 'Inverter 2.B',
-											lineColor: '#2020D0',
-											fillColor: '#2020D0',
-										},
-										{
-											dataField: _value + '_c',
-											displayText: 'Inverter 2.C',
-											lineColor: '#20D020',
-											fillColor: '#20D020',
-										},
-										{
-											dataField: _value + '_d',
-											displayText: 'Inverter 3.A',
-											lineColor: '#D0D020',
-											fillColor: '#D0D020',
-										},
-										{
-											dataField: _value + '_e',
-											displayText: 'Inverter 3.B',
-											lineColor: '#20D0D0',
-											fillColor: '#20D0D0',
-										},
-										{
-											dataField: _value + '_f',
-											displayText: 'Inverter 3.C',
-											lineColor: '#D020D0',
-											fillColor: '#D020D0',
-										},
-										{
-											dataField: _value + '_g',
-											displayText: 'Inverter 4.A',
-											lineColor: '#A0A040',
-											fillColor: '#A0A040',
-										},
-										{
-											dataField: _value + '_h',
-											displayText: 'Inverter 4.B',
-											lineColor: '#40A0A0',
-											fillColor: '#40A0A0',
-										},
-										{
-											dataField: _value + '_i',
-											displayText: 'Inverter 4.C',
-											lineColor: '#A040A0',
-											fillColor: '#A040A0',
-										}]
-									}]});
-								chart.jqxChart('refresh');
-                            	chart.jqxChart({categoryAxis:{
-                                	dataField: 'logged',
-                        	        showGridLines: false,
-                            	    textRotationAngle: 270,
-                                    unitInterval: interval,
-                                	formatFunction: xAxisFormatFunction,
-                                	minValue: start,
-                                	maxValue: end}});
-                            	chart.jqxChart('update');
-                        });
-                    }
-                    $("#waiting").hide();
-                })
-				.catch(function(err) {
-					if(err.name === "TypeError" && err.message !== "cancelled") {
-						alert('Solar Fetch Error :-S' + err.message);
-					}
-				});
-		}
-		
-		function goBack() {
-			window.clearInterval(solarTimeOut);
-			if (window.history.length > 1) {
-				setTimeout(window.history.back, 1000);
-			} else {
-				setTimeout(window.close, 1000);
-			}
-		}
-    </script>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Solar PV strings</title>
+<link rel="stylesheet" href="../scripts/sc.css">
 </head>
-    <body style="background:white;">
-        <div id='solarChartContainer' style="width:100%; height: 96%" ></div>
-		<div style="text-align:center; width:100%; height: 4%">
-            <div style="float:left;height:100%">
-                <button onClick="goBack()" style="width:100%">Back</button>&nbsp;
-            </div>
-            <div style="float:left">
-                <label for="param">Parameter</label>
-                <select id="param" onchange="getCurrent()">
-                    <option value="power" selected="selected">Power (W)</option>
-                    <option value="current">Current (A)</option>
-                    <option value="volts">Voltage (V)</option>
-                </select>
-            </div>
-            <div style="float:left">
-                <label for="timeRange">Time Span</label>
-                <select id="timeRange" onchange="getCurrent()">
-                    <option value=1>Focus on selection</option>
-                    <option value=2>Double selection</option>
-                    <option value=604800000>1 Week</option>
-                    <option value=259200000>3 Days</option>
-                    <option value=172800000>2 Days</option>
-                    <option value=86400000>24 Hours</option>
-                    <option value=43200000>12 Hours</option>
-                    <option value=28800000>8 Hours</option>
-                    <option value=14400000>4 Hours</option>
-                    <option value=7200000 selected="selected">2 Hours</option>
-                    <option value=3600000>1 Hour</option>
-                    <option value=1800000>30 Minutes</option>
-                    <option value=900000>15 Minutes</option>
-                    <option value=0>Custom</option>
-                </select>
-            </div>
-            <div id="customDateTimes" style="float:left">
-                <span style="float:left;font-size:larger">Start At:&nbsp;</span>
-                <div id="startAt"></div>
-                <span style="float:left;font-size:larger">&nbsp;End At:&nbsp;</span>
-                <div id="endAt"></div>&nbsp;
-                <button onClick="refresh(buildURLCustomTimes())" style="height:100%; width:100px" >Update</button>
-            </div>
-            <div id="waiting" style="float:left; visibility:visible; padding-left: 10px;"><span>Fetching Data please stand by...</span></div>
-        </div>
-    </body>
+<body>
+<main>
+  <header>
+    <h1 id="title">Solar PV strings</h1>
+    <span class="status" id="status" role="status" aria-live="polite"></span>
+    <nav><a href="../ac_status.html">System status</a></nav>
+  </header>
+  <p class="sub" id="sub"></p>
+  <div class="controls" id="controls"></div>
+  <section class="card" id="charts"></section>
+</main>
+<script src="../scripts/sc.js"></script>
+<script src="../scripts/tracker.js"></script>
+<script>
+// String letters as logged (a..k) and the names on the inverters. Each
+// inverter keeps one colour; its strings A, B and C are solid, dashed and dotted.
+const STRINGS = [
+  ["j", "1-A", 1, ""], ["k", "1-B", 1, "dash"],
+  ["a", "2-A", 2, ""], ["b", "2-B", 2, "dash"], ["c", "2-C", 2, "dot"],
+  ["d", "3-A", 3, ""], ["e", "3-B", 3, "dash"], ["f", "3-C", 3, "dot"],
+  ["g", "4-A", 4, ""], ["h", "4-B", 4, "dash"], ["i", "4-C", 4, "dot"],
+];
+const PARAMS = { watts: ["W"], volts: ["V"], amps: ["A"] };
+
+function mapRow(r) {
+  const out = { total: 0 };
+  for (const [s] of STRINGS) for (const p in PARAMS) out[p + "_" + s] = r[p + "_" + s];
+  for (const [s] of STRINGS) out.total += r["watts_" + s] || 0;
+  return out;
+}
+
+const charts = [
+  { source: "solar", title: "Total power", unit: "W", decimals: 0, zero: true, minSpan: 100, height: 200,
+    series: [{ label: "Total", color: "--series-1", key: "total" }] },
+  { source: "solar", unit: (p) => PARAMS[p][0], decimals: 1, zero: true, height: 360,
+    series: (p) => STRINGS.map(([s, name, inv, dash]) => ({ label: "Inverter " + name, color: "--series-" + inv, dash, key: p + "_" + s })) },
+];
+
+SC.tracker({
+  title: "Solar PV strings",
+  sub: "Power, voltage or current for each string on the four string inverters.",
+  ranges: [15, 30, 60, 120, 240, 480, 720, 1440, 2880, 4320, 10080],
+  defaultRange: 120,
+  selector: { label: "Show", value: "watts", options: [
+    { value: "watts", label: "Power (W)" }, { value: "volts", label: "Voltage (V)" }, { value: "amps", label: "Current (A)" } ] },
+  sources: { solar: { url: "/realtime/getSolar", map: mapRow } },
+  charts,
+  live: (m) => {
+    if (!m.solar) return null;
+    const r = { t: m.solar.time };
+    const letters = "abcdefghijk";
+    m.solar.strings.forEach((s, i) => {
+      if (i >= letters.length) return;
+      r["watts_" + letters[i]] = s.watts; r["volts_" + letters[i]] = s.volts; r["amps_" + letters[i]] = s.amps;
+    });
+    r.total = m.solar.total;
+    return { solar: r };
+  },
+});
+</script>
+</body>
 </html>
