@@ -298,6 +298,7 @@ func init() {
 	// set logout put
 	log.SetOutput(logFile)
 	log.SetFlags(log.Lshortfile | log.LstdFlags)
+	log.Println("SystemController version", getBuildInfo())
 
 	// Initialise the current values
 	TeslaParameters.Reset()

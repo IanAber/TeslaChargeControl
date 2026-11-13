@@ -4,6 +4,7 @@ import (
 	"SystemController/quinticFunction"
 	"encoding/json"
 	"fmt"
+	"html"
 	"log"
 	"net/http"
 	"path/filepath"
@@ -483,15 +484,21 @@ func reloadChargingFunction(w http.ResponseWriter, _ *http.Request) {
 
 func getVersion(w http.ResponseWriter, _ *http.Request) {
 	w.Header().Set("Access-Control-Allow-Origin", "*")
-	_, err := fmt.Fprint(w, `<html>
+	b := getBuildInfo()
+	_, err := fmt.Fprintf(w, `<!doctype html>
+<html lang="en">
   <head>
-    <Cedar Technology System Manager>
+    <meta charset="utf-8">
+    <title>Cedar Technology System Manager</title>
   </head>
   <body>
     <h1>Cedar Technology System Manager</h1>
-    <h2>Version 2.0 - October 29th 2019</h2>
+    <h2>Version %s</h2>
+    <p>Commit %s</p>
+    <p>Built with %s. Running since %s.</p>
   </body>
-</html>`)
+</html>`, html.EscapeString(b.String()), html.EscapeString(b.Revision), html.EscapeString(b.GoVersion),
+		startTime.Format("2006-01-02 15:04:05 MST"))
 	if err != nil {
 		log.Println(err)
 	}
