@@ -28,8 +28,6 @@ import (
 
 // Version 2 makes parameters editable via the WEB interface
 
-//const CHARGINGLINKS = `<a href="/startCharging">Start Charging</a><br><a href="/stopCharging">Stop Charging</a>`
-
 var (
 	address               string
 	baudrate              int
@@ -662,8 +660,6 @@ func main() {
 
 	msg := twcMessage.New(port, verbose)
 	t := time.Now()
-
-	log.Println("********** Tesla Keep Alive started. *********")
 
 	// Start the power management loop
 	go calculatePowerAvailable()
