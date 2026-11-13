@@ -22,9 +22,9 @@
 <script>
 SC.tracker({
   title: "Hot tank temperatures",
-  sub: "Top, middle and bottom of the hot tank, and the weighted trigger temperature the heater controls on. One-minute averages.",
+  sub: "Top, middle and bottom of the hot tank. One-minute averages.",
   sources: {
-    tank: { url: "/realtime/gethottank", map: (r) => ({ top: r.TSH0, middle: r.TSH2, bottom: r.TSH1, trigger: r.mean }) },
+    tank: { url: "/realtime/gethottank", map: (r) => ({ top: r.TSH0, middle: r.TSH2, bottom: r.TSH1 }) },
   },
   charts: [{
     source: "tank", unit: "°C", decimals: 1, minSpan: 10, gapMs: 600000, height: 320,
@@ -32,11 +32,9 @@ SC.tracker({
       { label: "Top", color: "--series-1", key: "top" },
       { label: "Middle", color: "--series-2", key: "middle" },
       { label: "Bottom", color: "--series-3", key: "bottom" },
-      { label: "Trigger (weighted)", color: "--series-4", dash: "dash", key: "trigger" },
     ],
   }],
-  live: (m) => m.temps && { tank: { t: m.temps.time, top: m.temps.hotTankTop, middle: m.temps.hotTankMiddle, bottom: m.temps.hotTankBottom,
-    trigger: (3 * m.temps.hotTankTop + 2 * m.temps.hotTankMiddle + m.temps.hotTankBottom) / 6 } },
+  live: (m) => m.temps && { tank: { t: m.temps.time, top: m.temps.hotTankTop, middle: m.temps.hotTankMiddle, bottom: m.temps.hotTankBottom } },
 });
 </script>
 </body>

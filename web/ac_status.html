@@ -118,7 +118,7 @@
       <div class="kv" id="invKV"></div>
     </a>
 
-    <a class="card" href="trackers/water_heater.html">
+    <a class="card" href="trackers/battery_voltage.html">
       <div class="card-head"><h2>Battery voltage</h2><span class="more">History →</span></div>
       <div class="big" id="voltBig">–</div>
       <div class="kv" id="voltKV"></div>
@@ -133,7 +133,6 @@
 
     <a class="card" href="trackers/hot_tank.html" data-temps>
       <div class="card-head"><h2>Hot tank</h2><span class="more">History →</span></div>
-      <div class="big" id="hotTrigger">–</div>
       <div class="rows" id="hotRows"></div>
       <div class="stale-note"></div>
     </a>
@@ -331,15 +330,12 @@
       ["Setpoint − battery", fmt(inv.vSetpoint - inv.vBatt, 2, "V")],
       ["Lowest difference", fmt(inv.vBattDeltaMin, 2, "V")],
       ["Highest difference", fmt(inv.vBattDeltaMax, 2, "V")],
-      ["Auxiliary heater", onOff(m.equipment.auxHeat)],
     ]);
 
     // Temperatures
     const t = m.temps;
     document.querySelectorAll("[data-temps]").forEach((c) => staleNote(c, c.querySelector(".stale-note"), t && t.time, "Temperature"));
     if (t) {
-      const trigger = (3 * t.hotTankTop + 2 * t.hotTankMiddle + t.hotTankBottom) / 6;
-      big("hotTrigger", fmt(trigger, 1, "°C"), "weighted");
       rows("hotRows", [temp("Top", t.hotTankTop, 40, 100), temp("Middle", t.hotTankMiddle, 40, 100), temp("Bottom", t.hotTankBottom, 40, 100)], ["40", "100 °C"]);
       rows("bufferRows", [temp("Top", t.bufferTankTop, 0, 60), temp("Middle", t.bufferTankMiddle, 0, 60), temp("Bottom", t.bufferTankBottom, 0, 60)], ["0", "60 °C"]);
       rows("solarTempRows", [temp("Collector", t.solarCollector, 0, 120), temp("Inlet", t.solarInlet, 0, 120), temp("Outlet", t.solarOutlet, 0, 120)], ["0", "120 °C"]);

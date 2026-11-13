@@ -30,8 +30,6 @@ import (
 
 //const CHARGINGLINKS = `<a href="/startCharging">Start Charging</a><br><a href="/stopCharging">Stop Charging</a>`
 
-//const maxGasPressure = 34.0 // Pressure above which we do not increase the electrolyser output
-
 var (
 	address               string
 	baudrate              int
@@ -49,12 +47,11 @@ var (
 	masterAddress         uint
 	port                  serial.Port
 	TeslaParameters       Params.Params
-	Heater                *HeaterSetting
-	//	Electrolyser          ElectrolyserSetting
-	iValues         InverterValues
-	slaves          []twcSlave.Slave
-	pDB             *sql.DB
-	SolarProduction struct {
+	solarPump             *SolarPumpControl
+	iValues               InverterValues
+	slaves                []twcSlave.Slave
+	pDB                   *sql.DB
+	SolarProduction       struct {
 		power  float32
 		logged time.Time
 	}
@@ -304,7 +301,7 @@ func init() {
 
 	// Initialise the current values
 	TeslaParameters.Reset()
-	Heater = NewHeaterSetting()
+	solarPump = NewSolarPumpControl()
 	// Set up the quintic function to control charging
 	err = iValues.LoadFunctionConstants(ChargingConstantsFile)
 	if err != nil {
@@ -342,8 +339,6 @@ func init() {
 	log.Println("Connected to the database")
 
 	log.SetFlags(log.Lshortfile | log.Ldate | log.Ltime)
-	//	Electrolyser.Enabled = true
-	//	Electrolyser.gasPressure = maxGasPressure
 	// Start handling incoming CAN bus messages
 	go processCANFrames()
 }
@@ -362,12 +357,8 @@ func logToDatabase() {
 	lastPower := iValues.GetPower()
 	lastIavailable := TeslaParameters.GetMaxAmps()
 	lastIused := TeslaParameters.GetCurrent()
-	//lastHeatersetting := Heater.GetSetting()
-	//lastHeaterpump := Heater.GetPump()
-	//	lastSolarPump := Heater.GetSolarPump()
 	lastSolarPump := uint8(255)
 	var err error
-	hotTankTemp := int16(1000)
 	lastbmsVBat := 0.0
 	lastbmsIBat := 0.0
 	lastbmsTBat := 0.0
@@ -399,9 +390,7 @@ func logToDatabase() {
 		newIavailable := TeslaParameters.GetMaxAmps()
 		newIused := TeslaParameters.GetCurrent()
 		newPower := iValues.GetPower()
-		//newHeatersetting := Heater.GetSetting()
-		//newHeaterpump := Heater.GetPump()
-		newSolarPump := Heater.GetSolarPump()
+		newSolarPump := solarPump.Speed()
 
 		if pDB == nil {
 			pDB, err = connectToDatabase()
@@ -463,30 +452,6 @@ func logToDatabase() {
 				continue
 			}
 		}
-		//if (newHeatersetting != lastHeatersetting) || (newHeaterpump != lastHeaterpump) {
-		//	lastHeatersetting = newHeatersetting
-		//	lastHeaterpump = newHeaterpump
-		//	lastIused = newIused
-		//	_, err := pDB.Exec("insert into water_heater_operation(status, pump) values(?, ?)", newHeatersetting, newHeaterpump)
-		//	if err != nil {
-		//		log.Printf("Error writing heater values to the database - %s", err)
-		//		_ = pDB.Close()
-		//		pDB = nil
-		//		continue
-		//	}
-		//}
-		// Get the hot tank temperature
-		var err = pDB.QueryRow("select greatest(`HotTankTop`, `HotTankMiddle`, `HotTankBottom`) as maxtemp from `temperatures` where `logged` > date_add(now(), interval -5 minute) order by `logged` desc limit 1;").Scan(&hotTankTemp)
-		if err != nil {
-			Heater.SetHotTankTemp(1000) // Be safe. If we can't get the temperature assume it is boiling to shut down the heater.
-			if !errors.Is(err, sql.ErrNoRows) {
-				log.Printf("Error fetching hot tank temperature from the database - %s", err)
-				err = pDB.Close()
-				pDB = nil
-				continue
-			}
-		}
-		Heater.SetHotTankTemp(hotTankTemp)
 	}
 }
 
@@ -702,10 +667,6 @@ func main() {
 	// Start the power management loop
 	go calculatePowerAvailable()
 	log.Println("********** Calculate Power started. *********")
-
-	//// Start the heater kill loop to ensure the heater is not drawing from the battery.
-	//go killHeaterOnDischarge()
-	//log.Println("********** Kill heater on discharge started. *********")
 
 	go logToDatabase()
 	log.Println("********** Database logger started started. *********")

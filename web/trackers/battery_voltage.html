@@ -3,13 +3,13 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Water heater and battery voltage</title>
+<title>Battery voltage</title>
 <link rel="stylesheet" href="../scripts/sc.css">
 </head>
 <body>
 <main>
   <header>
-    <h1 id="title">Water heater and battery voltage</h1>
+    <h1 id="title">Battery voltage</h1>
     <span class="status" id="status" role="status" aria-live="polite"></span>
     <nav><a href="../ac_status.html">System status</a></nav>
   </header>
@@ -21,17 +21,14 @@
 <script src="../scripts/tracker.js"></script>
 <script>
 SC.tracker({
-  title: "Water heater and battery voltage",
-  sub: "Auxiliary water heater level, and the battery voltage against the charge setpoint.",
+  title: "Battery voltage",
+  sub: "Battery voltage against the charge setpoint.",
   ranges: [30, 60, 120, 240, 480, 720, 1440],
   sources: {
-    heater: { url: "/realtime/getHeater", step: true, map: (r) => ({ level: parseFloat(r.status) }) },
     volts: { url: "/realtime/getVoltage", map: (r) => ({ volts: r.volts, setpoint: r.volts_setpoint }) },
   },
   charts: [
-    { source: "heater", title: "Heater level", unit: "", decimals: 0, min: 0, max: 7, height: 180,
-      series: [{ label: "Level", color: "--series-1", key: "level" }] },
-    { source: "volts", title: "Battery voltage", unit: "V", decimals: 2, minSpan: 2, height: 260,
+    { source: "volts", title: "Battery voltage", unit: "V", decimals: 2, minSpan: 2, height: 320,
       series: [{ label: "Battery", color: "--series-1", key: "volts" }, { label: "Setpoint", color: "--series-2", dash: "dash", key: "setpoint" }] },
   ],
   live: (m) => ({ volts: { t: m.time, volts: m.inverter.vBatt, setpoint: m.inverter.vSetpoint } }),

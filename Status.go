@@ -160,9 +160,8 @@ type statusMessage struct {
 	Tesla statusTesla `json:"tesla"`
 
 	Equipment struct {
-		Fans    bool `json:"fans"`
-		AC      bool `json:"ac"`
-		AuxHeat bool `json:"auxHeat"`
+		Fans bool `json:"fans"`
+		AC   bool `json:"ac"`
 	} `json:"equipment"`
 
 	SolarPump uint8 `json:"solarPump"` // %
@@ -262,9 +261,8 @@ func buildStatus() *statusMessage {
 
 	m.Equipment.Fans = rpio.ReadPin(17) == rpio.Low
 	m.Equipment.AC = rpio.ReadPin(27) == rpio.Low
-	m.Equipment.AuxHeat = rpio.ReadPin(23) == rpio.Low
-	if Heater != nil {
-		m.SolarPump = Heater.GetSolarPump()
+	if solarPump != nil {
+		m.SolarPump = solarPump.Speed()
 	}
 
 	liveTempsMu.Lock()

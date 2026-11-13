@@ -76,25 +76,25 @@ func ManageSolarPump() {
 			if logSolar {
 				log.Printf("solar : collector = %d so Increase solar pump speed", temps.collector)
 			}
-			Heater.IncreasePump()
+			solarPump.Increase()
 		} else {
 			// Slow the response down a little
 			if loops <= 0 {
-				//				if (temps.collector > (temps.tankTop + 50)) || ((Heater.solarPumpSetting > 0) && (temps.exchanger > (temps.input + 20))) {
-				if (temps.collector > (temps.tankTop + 50)) || ((Heater.solarPumpSetting > 0) && (temps.output > (temps.input + 20))) {
+				//				if (temps.collector > (temps.tankTop + 50)) || ((solarPump.Speed() > 0) && (temps.exchanger > (temps.input + 20))) {
+				if (temps.collector > (temps.tankTop + 50)) || ((solarPump.Speed() > 0) && (temps.output > (temps.input + 20))) {
 					if logSolar {
 						log.Printf("solar : collector = %d ,tankTop = %d, pump = %d, exchange = %d, input = %d so Increase solar pump speed",
-							//							temps.collector, temps.tankTop, Heater.solarPumpSetting, temps.exchanger, temps.input)
-							temps.collector, temps.tankTop, Heater.solarPumpSetting, temps.output, temps.input)
+							//							temps.collector, temps.tankTop, solarPump.Speed(), temps.exchanger, temps.input)
+							temps.collector, temps.tankTop, solarPump.Speed(), temps.output, temps.input)
 					}
-					Heater.IncreasePump()
+					solarPump.Increase()
 				} else {
 					if logSolar {
 						log.Printf("solar : collector = %d ,tankTop = %d, pump = %d, exchange = %d, input = %d so Decrease solar pump speed",
-							//							temps.collector, temps.tankTop, Heater.solarPumpSetting, temps.exchanger, temps.input)
-							temps.collector, temps.tankTop, Heater.solarPumpSetting, temps.output, temps.input)
+							//							temps.collector, temps.tankTop, solarPump.Speed(), temps.exchanger, temps.input)
+							temps.collector, temps.tankTop, solarPump.Speed(), temps.output, temps.input)
 					}
-					Heater.DecreasePump()
+					solarPump.Decrease()
 				}
 				loops = 4
 			} else {
@@ -103,7 +103,7 @@ func ManageSolarPump() {
 					if logSolar {
 						log.Printf(`solar : collector(%d)  < input(%d) so Decrease solar pump speed`, temps.collector, temps.input)
 					}
-					Heater.DecreasePump()
+					solarPump.Decrease()
 				}
 			}
 		}

@@ -15,10 +15,6 @@ type PinData struct {
 	Port0 bool `json:"port0"`
 	Port1 bool `json:"port1"`
 	Port2 bool `json:"port2"`
-	Port3 bool `json:"port3"`
-	Port4 bool `json:"port4"`
-	Port5 bool `json:"port5"`
-	Port6 bool `json:"port6"`
 }
 
 type PumpData struct {
@@ -177,10 +173,6 @@ func getData(w http.ResponseWriter, _ *http.Request) {
 
 	result.Pins.Port0 = rpio.ReadPin(17) == rpio.Low
 	result.Pins.Port2 = rpio.ReadPin(27) == rpio.Low
-	result.Pins.Port3 = rpio.ReadPin(22) == rpio.High
-	result.Pins.Port4 = rpio.ReadPin(23) == rpio.Low
-	result.Pins.Port5 = rpio.ReadPin(6) == rpio.High
-	result.Pins.Port6 = rpio.ReadPin(24) == rpio.High
 
 	getSolarStringData(&result.Solar)
 
@@ -297,7 +289,6 @@ type HotTankValue struct {
 	Tsh0   float32 `json:"TSH0"`
 	Tsh1   float32 `json:"TSH1"`
 	Tsh2   float32 `json:"TSH2"`
-	Mean   float32 `json:"mean"`
 }
 
 func getHotTankData(w http.ResponseWriter, r *http.Request) {
@@ -326,9 +317,6 @@ func getHotTankData(w http.ResponseWriter, r *http.Request) {
 				ReturnJSONError(w, DeviceString, err, http.StatusInternalServerError, true)
 				return
 			}
-			// Calculate the weighted mean temperature
-
-			result.Mean = ((result.Tsh0 * 3) + result.Tsh1 + (result.Tsh2 * 2)) / 60.0
 			result.Tsh0 /= 10.0
 			result.Tsh1 /= 10.0
 			result.Tsh2 /= 10.0
@@ -888,50 +876,6 @@ func getVoltageData(w http.ResponseWriter, r *http.Request) {
 		for rows.Next() {
 			result := new(VoltageData)
 			if err := rows.Scan(&result.Logged, &result.VBatt, &result.VSetpoint); err != nil {
-				ReturnJSONError(w, DeviceString, err, http.StatusInternalServerError, true)
-				return
-			}
-			Results = append(Results, result)
-		}
-		if resultJSON, err := json.Marshal(Results); err != nil {
-			ReturnJSONError(w, DeviceString, err, http.StatusInternalServerError, true)
-		} else {
-			if _, err := fmt.Fprintf(w, string(resultJSON)); err != nil {
-				log.Print(err)
-			}
-		}
-	}
-}
-
-type HeaterData struct {
-	Logged float64 `json:"logged"`
-	Status string  `json:"status"`
-}
-
-func getHeaterData(w http.ResponseWriter, r *http.Request) {
-	var Results []*HeaterData
-	const rqst = `select unix_timestamp(logged) as logged, status from water_heater_operation where logged between ? and ?`
-
-	const DeviceString = "Heater Data"
-
-	start, end, err := GetTimeRange(r)
-	if err != nil {
-		ReturnJSONError(w, DeviceString, err, http.StatusBadRequest, false)
-		return
-	}
-
-	if rows, err := pDB.Query(rqst, start, end); err != nil {
-		ReturnJSONError(w, DeviceString, err, http.StatusInternalServerError, true)
-		return
-	} else {
-		defer func() {
-			if err := rows.Close(); err != nil {
-				log.Print(err)
-			}
-		}()
-		for rows.Next() {
-			result := new(HeaterData)
-			if err := rows.Scan(&result.Logged, &result.Status); err != nil {
 				ReturnJSONError(w, DeviceString, err, http.StatusInternalServerError, true)
 				return
 			}

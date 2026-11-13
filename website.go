@@ -31,7 +31,6 @@ func setUpWebSite() {
 	router.HandleFunc("/realtime/getpumps", getPumpData).Methods("GET")
 	router.HandleFunc("/realtime/getCurrent", getCurrent).Methods("GET")
 	router.HandleFunc("/realtime/getTesla", getTeslaData).Methods("GET")
-	router.HandleFunc("/realtime/getHeater", getHeaterData).Methods("GET")
 	router.HandleFunc("/realtime/getVoltage", getVoltageData).Methods("GET")
 	router.HandleFunc("/realtime/getactemps", getACTempData).Methods("GET")
 	router.HandleFunc("/realtime/getEG4", getEG4).Methods("GET")
@@ -255,7 +254,7 @@ func showChargeParams(w http.ResponseWriter, _ *http.Request) {
             </table>
         </div>
         <div style="overflow:hidden; margin-left:20em; margin-right:20em">
-            <h2 style="text-align:center">Charging will try to maintain the delta between setpoint and actual battery voltage in the green area by controlling the Tesla charging current and the auxilliary heater power.</h2>
+            <h2 style="text-align:center">Charging will try to maintain the delta between setpoint and actual battery voltage in the green area by controlling the Tesla charging current.</h2>
             <h3 style="text-align:center">-A+(B*x)-(C*x<sup>2</sup>)+(D*x<sup>3</sup>)-(E*x<sup>4</sup>)+(F*x<sup>5</sup>)</h3>
             <div style="text-align:center">
                 <button type="button" onclick="window.history.back()" tabindex=14 style="font-size:1.5em;border-radius: 10px">&lt;&lt;&lt; Back</button>&nbsp;

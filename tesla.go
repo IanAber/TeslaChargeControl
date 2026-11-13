@@ -5,7 +5,7 @@ import (
 	"time"
 )
 
-// This function will look at the various inverter parameters and work out if there is power available for car charging or water heating
+// This function will look at the various inverter parameters and work out if there is power available for car charging
 // It bases this calculation on the current battery state of charge, the battery charging current and the difference between the setpoint
 // and the actual battery voltage
 func calculatePowerAvailable() {
@@ -51,15 +51,8 @@ func calculatePowerAvailable() {
 				// Car is charging so try and increase the charge rate
 				TeslaParameters.ChangeCurrent(delta)
 			} else {
-				// No car charging requested so set the available current to 15.0 amps and turn up the auxiliary heater
-				//				log.Println("Tesla not charging to default to 15A and increase electrolyser")
+				// No car charging requested so set the available current to 15.0 amps
 				TeslaParameters.SetMaxAmps(15.0)
-				// If the frequency is over 60.9 the solar inverters are throttled, so we should whack the electrolyser up to full immediately
-				if iValues.frequency > 60.9 {
-					delta = 100
-				} else {
-					delta = 1
-				}
 			}
 		} else if powerState == -1 { // If the delta is more than the max we need to reduce the load to give the battery chance to charge up
 			delta = int16((batAmps + 10) / 5) // Inverter current is at 48V so 5 times the 240 car current
