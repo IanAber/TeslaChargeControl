@@ -144,14 +144,9 @@
 
     <a class="card" href="trackers/solar_temps.html" data-temps>
       <div class="card-head"><h2>Solar hot water</h2><span class="more">History →</span></div>
+      <div class="kv" id="pumpKV"></div>
       <div class="rows" id="solarTempRows"></div>
       <div class="stale-note"></div>
-    </a>
-
-    <a class="card" href="trackers/solarPump.html">
-      <div class="card-head"><h2>Solar pump</h2><span class="more">History →</span></div>
-      <div class="big" id="pumpBig">–</div>
-      <div class="rows" id="pumpRows"></div>
     </a>
 
     <a class="card" href="trackers/loop_temps.html" data-temps>
@@ -341,9 +336,8 @@
     }
     kv("equipKV", [["Air conditioning", onOff(m.equipment.ac)], ["Cabinet fans", onOff(m.equipment.fans)]]);
 
-    // Solar pump
-    big("pumpBig", fmt(m.solarPump, 0, "%"), "speed");
-    rows("pumpRows", [{ label: "Speed", value: m.solarPump, min: 0, max: 100, unit: "%", decimals: 0 }], null);
+    // Solar pump, shown on the solar hot water card
+    kv("pumpKV", [["Pump", m.solarPump > 0 ? fmt(m.solarPump, 0, "%") + " speed" : "Stopped"]]);
 
     // Tesla
     const car = m.tesla.cars[0];
