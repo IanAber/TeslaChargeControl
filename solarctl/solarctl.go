@@ -184,12 +184,12 @@ func (c *Controller) Step(in Inputs) uint8 {
 		case c.collectorHot:
 			c.Reason = fmt.Sprintf("collector too hot to refill (%.1f °C)", in.Collector)
 		case lift < cfg.StartDelta:
-			c.Reason = fmt.Sprintf("collector %.1f °C above tank", lift)
+			c.Reason = compareToTank(lift)
 		case !c.since.IsZero() && now.Sub(c.since) < cfg.MinOff:
 			c.Reason = "waiting after last run"
 		default:
 			c.state, c.since, c.speed = Priming, now, 100
-			c.Reason = fmt.Sprintf("collector %.1f °C above tank", lift)
+			c.Reason = compareToTank(lift)
 		}
 
 	case Priming:
@@ -231,6 +231,14 @@ func (c *Controller) Step(in Inputs) uint8 {
 		}
 	}
 	return uint8(math.Round(c.speed))
+}
+
+// compareToTank describes how much hotter (or colder) the collector is than the tank.
+func compareToTank(d float64) string {
+	if d < 0 {
+		return fmt.Sprintf("collector %.1f °C below tank", -d)
+	}
+	return fmt.Sprintf("collector %.1f °C above tank", d)
 }
 
 // stop turns the pump off, recording when so MinOff can be enforced.

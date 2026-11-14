@@ -216,3 +216,11 @@ func TestStartsFromTankBottom(t *testing.T) {
 		t.Fatalf("did not start 9 °C above the tank bottom: %s", s.c.Reason)
 	}
 }
+
+func TestReasonSaysBelowWhenCollectorColder(t *testing.T) {
+	s := newSim(t)
+	s.run(time.Minute, func(uint8) Inputs { return readings(24.5, 25, 25, 87.4) })
+	if want := "collector 62.9 °C below tank"; s.c.Reason != want {
+		t.Fatalf("reason %q, want %q", s.c.Reason, want)
+	}
+}
