@@ -515,19 +515,11 @@ func GetTemperatures() {
 		solarTemps.tankTop = temperatures.HotTankTop
 		solarTemps.tankMid = temperatures.HotTankMiddle
 		solarTemps.tankBottom = temperatures.HotTankBottom
-		//		solarTemps.exchanger = temperatures.SolarExchanger
+		if esp1 != nil {
+			solarTemps.updated = esp1.getLastUpdate()
+		}
 
 		if tempUpdate != nil {
-
-			// Force temperatures in case of failure.
-			//log.Print("Signal solarTemps", solarTemps)
-			//solarTemps.collector = 1000
-			//solarTemps.input = 600
-			//solarTemps.exchanger = 950
-			//solarTemps.output = 950
-			//solarTemps.tankMid = 60
-			//solarTemps.tankTop = 60
-			//solarTemps.tankBottom = 60
 			tempUpdate <- solarTemps
 		}
 

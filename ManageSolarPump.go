@@ -1,112 +1,73 @@
 package main
 
 import (
+	"flag"
 	"log"
 	"time"
 
-	"go.einride.tech/pid"
+	"SystemController/solarctl"
 )
 
+// SolarTemps is one set of solar loop and tank temperatures, in tenths of a
+// degree C, passed from GetTemperatures to ManageSolarPump.
 type SolarTemps struct {
-	collector int16
-	input     int16
-	output    int16
-	//	exchanger  int16
+	collector  int16
+	input      int16 // water going up to the collectors
+	output     int16 // water coming back to the tank
 	tankTop    int16
 	tankMid    int16
 	tankBottom int16
+	updated    time.Time // when these were last read successfully
 }
 
 var (
-	tempUpdate chan *SolarTemps
-	logSolar   bool
+	tempUpdate  chan *SolarTemps
+	logSolar    bool
+	solarConfig = solarctl.DefaultConfig()
 )
 
 func init() {
 	tempUpdate = make(chan *SolarTemps)
+	flag.Float64Var(&solarConfig.MinSpeed, "solarMinSpeed", solarConfig.MinSpeed,
+		"Slowest solar pump speed (%) that still lifts water to the collectors")
+	flag.Float64Var(&solarConfig.TargetRise, "solarTargetRise", solarConfig.TargetRise,
+		"Wanted temperature rise (°C) across the collectors while the solar pump runs")
+	flag.Float64Var(&solarConfig.TankMax, "solarTankMax", solarConfig.TankMax,
+		"Stop the solar pump when the hottest solar tank sensor reaches this (°C)")
+	flag.Float64Var(&solarConfig.TankResume, "solarTankResume", solarConfig.TankResume,
+		"Allow the solar pump again once the hottest solar tank sensor is below this (°C)")
 }
 
-// ManageSolarPump manages the pump pushing water from the hot tank throught the solar collectors.
-// Temperatrues are in Celsius * 10 and returned to us as int16 values
+// ManageSolarPump runs the solar pump controller (package solarctl) each time
+// new temperatures arrive, about every 5 seconds, and drives the pump.
 func ManageSolarPump() {
-	loops := 3
-	controller := pid.Controller{
-		Config: pid.ControllerConfig{
-			ProportionalGain: 2.0,
-			IntegralGain:     1.0,
-			DerivativeGain:   1.0,
-		},
-	}
-	for {
-		// Triggers every time new temperatures are read. (approx 5 seconds)
-		temps := <-tempUpdate
+	c := solarctl.New(solarConfig)
+	log.Printf("Solar pump controller: %+v", solarConfig)
+	lastState := solarctl.State(-1)
 
-		//		log.Println("Temperatures updated.")
-		// Get the solar temperatures
-		tank := temps.tankTop
-		if tank > temps.tankMid {
-			tank = temps.tankMid
+	for temps := range tempUpdate {
+		in := solarctl.Inputs{
+			Time:       time.Now(),
+			Updated:    temps.updated,
+			Collector:  float64(temps.collector) / 10,
+			Inlet:      float64(temps.input) / 10,
+			Outlet:     float64(temps.output) / 10,
+			TankTop:    float64(temps.tankTop) / 10,
+			TankMiddle: float64(temps.tankMid) / 10,
+			TankBottom: float64(temps.tankBottom) / 10,
 		}
-		if tank > temps.tankBottom {
-			tank = temps.tankBottom
+		speed := c.Step(in)
+		if speed != solarPump.Speed() {
+			solarPump.Set(speed)
 		}
-		// tank is now the least of the three temperatures
+		state := c.State()
+		solarPump.SetState(state.String(), c.Reason)
 
-		// Calculate the p, i & d terms
-		// p = difference between what we have and what we want. We want a lift of 3 degrees
-		controller.Update(pid.ControllerInput{
-			ReferenceSignal: 3.0,
-			//			ActualSignal:     float64(temps.exchanger - tank),
-			ActualSignal:     float64(temps.output - temps.input),
-			SamplingInterval: 5 * time.Second,
-		})
-
-		if logSolar {
-			log.Printf("solar : error = %f, signal = %f, integral = %f, derivative = %f : tank = %f, exchanger = %f",
-				controller.State.ControlError, controller.State.ControlSignal, controller.State.ControlErrorIntegral,
-				//				controller.State.ControlErrorDerivative, float64(tank)/10, float64(temps.exchanger)/10)
-				controller.State.ControlErrorDerivative, float64(tank)/10, float64(temps.output)/10)
+		// Log every state change, and every update when solar logging is on.
+		if state != lastState || logSolar {
+			log.Printf("solar : %s at %d%% (%s) : collector %.1f, in %.1f, out %.1f, tank %.1f/%.1f/%.1f",
+				state, speed, c.Reason, in.Collector, in.Inlet, in.Outlet, in.TankTop, in.TankMiddle, in.TankBottom)
 		}
-		// If the collector is 5 or more degrees above the tank or
-		// the pump is running and the exchanger is more than 2 degrees above the input
-		// start the pump or increase it if it is already running
-
-		// If the collector is more than 95C then increase the pump regardless.
-		if temps.collector > 950 {
-			if logSolar {
-				log.Printf("solar : collector = %d so Increase solar pump speed", temps.collector)
-			}
-			solarPump.Increase()
-		} else {
-			// Slow the response down a little
-			if loops <= 0 {
-				//				if (temps.collector > (temps.tankTop + 50)) || ((solarPump.Speed() > 0) && (temps.exchanger > (temps.input + 20))) {
-				if (temps.collector > (temps.tankTop + 50)) || ((solarPump.Speed() > 0) && (temps.output > (temps.input + 20))) {
-					if logSolar {
-						log.Printf("solar : collector = %d ,tankTop = %d, pump = %d, exchange = %d, input = %d so Increase solar pump speed",
-							//							temps.collector, temps.tankTop, solarPump.Speed(), temps.exchanger, temps.input)
-							temps.collector, temps.tankTop, solarPump.Speed(), temps.output, temps.input)
-					}
-					solarPump.Increase()
-				} else {
-					if logSolar {
-						log.Printf("solar : collector = %d ,tankTop = %d, pump = %d, exchange = %d, input = %d so Decrease solar pump speed",
-							//							temps.collector, temps.tankTop, solarPump.Speed(), temps.exchanger, temps.input)
-							temps.collector, temps.tankTop, solarPump.Speed(), temps.output, temps.input)
-					}
-					solarPump.Decrease()
-				}
-				loops = 4
-			} else {
-				// If the temperature of the water going to the collectors is warmer than the collector temperature, decrease the pump speed
-				if temps.input > temps.collector {
-					if logSolar {
-						log.Printf(`solar : collector(%d)  < input(%d) so Decrease solar pump speed`, temps.collector, temps.input)
-					}
-					solarPump.Decrease()
-				}
-			}
-		}
-		loops--
+		lastState = state
 	}
 }

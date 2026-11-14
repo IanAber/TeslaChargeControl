@@ -164,7 +164,9 @@ type statusMessage struct {
 		AC   bool `json:"ac"`
 	} `json:"equipment"`
 
-	SolarPump uint8 `json:"solarPump"` // %
+	SolarPump       uint8  `json:"solarPump"`       // %
+	SolarPumpState  string `json:"solarPumpState"`  // Off, Priming or Running
+	SolarPumpReason string `json:"solarPumpReason"` // why, e.g. "tank full (92.3 °C)"
 
 	Temps *statusTemps `json:"temps,omitempty"`
 
@@ -263,6 +265,7 @@ func buildStatus() *statusMessage {
 	m.Equipment.AC = rpio.ReadPin(27) == rpio.Low
 	if solarPump != nil {
 		m.SolarPump = solarPump.Speed()
+		m.SolarPumpState, m.SolarPumpReason = solarPump.State()
 	}
 
 	liveTempsMu.Lock()

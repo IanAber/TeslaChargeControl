@@ -145,6 +145,7 @@
     <a class="card" href="trackers/solar_temps.html" data-temps>
       <div class="card-head"><h2>Solar hot water</h2><span class="more">History →</span></div>
       <div class="kv" id="pumpKV"></div>
+      <p class="note" id="pumpWhy" style="margin-top:4px"></p>
       <div class="rows" id="solarTempRows"></div>
       <div class="stale-note"></div>
     </a>
@@ -337,7 +338,9 @@
     kv("equipKV", [["Air conditioning", onOff(m.equipment.ac)], ["Cabinet fans", onOff(m.equipment.fans)]]);
 
     // Solar pump, shown on the solar hot water card
-    kv("pumpKV", [["Pump", m.solarPump > 0 ? fmt(m.solarPump, 0, "%") + " speed" : "Stopped"]]);
+    const pumpState = m.solarPumpState || (m.solarPump > 0 ? "Running" : "Off");
+    kv("pumpKV", [["Pump", pumpState === "Off" ? "Stopped" : pumpState + " at " + fmt(m.solarPump, 0, "%")]]);
+    $("pumpWhy").textContent = m.solarPumpReason || "";
 
     // Tesla
     const car = m.tesla.cars[0];

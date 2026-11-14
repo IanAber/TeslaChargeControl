@@ -3,7 +3,6 @@ package main
 import (
 	"log"
 	"sync"
-	"time"
 
 	"github.com/golang/glog"
 	"github.com/stianeikeland/go-rpio"
@@ -24,14 +23,14 @@ import (
 const solarPumpPWMPin = 18
 const solarPumpRelayPin = 27
 
-// SolarPumpControl drives the pump that circulates water from the hot tank
-// through the solar collectors. ManageSolarPump decides the speed.
+// SolarPumpControl drives the pump that lifts water from the bottom of the
+// solar tank to the collectors: PWM speed on GPIO 18, power relay on GPIO 27.
+// ManageSolarPump decides the speed.
 type SolarPumpControl struct {
-	mu        sync.Mutex
-	setting   uint8     // Duty cycle percentage of the pump
-	startTime time.Time // When the pump was started
-	minSpeed  uint8     // When the speed drops below this the pump is stopped
-	startSecs uint      // Seconds after starting at full speed before the pump may slow down
+	mu     sync.Mutex
+	speed  uint8  // duty cycle percentage; 0 means stopped
+	state  string // controller state, e.g. "Running"
+	reason string // why the controller is in that state
 }
 
 func init() {
@@ -49,64 +48,46 @@ func init() {
 }
 
 func NewSolarPumpControl() *SolarPumpControl {
-	return &SolarPumpControl{
-		minSpeed:  10,
-		startTime: time.Now(),
-		startSecs: 30,
-	}
+	return &SolarPumpControl{state: "Off", reason: "starting up"}
 }
 
-func (s *SolarPumpControl) SetSpeed(speed uint8) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
+// Set runs the pump at speed percent, switching the relay on, or stops it
+// (relay off) when speed is 0.
+func (s *SolarPumpControl) Set(speed uint8) {
 	if speed > 100 {
 		log.Print("Maximum pump speed is 100. Requested speed is ", speed)
+		speed = 100
 	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	rpio.Pin(solarPumpPWMPin).DutyCycle(uint32(speed), 100)
-	s.setting = speed
-}
-
-// Increase starts the pump at full speed if it is stopped, or speeds it up by 1%.
-func (s *SolarPumpControl) Increase() {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	if s.setting < 100 {
-		if s.setting == 0 {
-			s.startTime = time.Now()
-			s.setting = 100
-		} else {
-			s.setting++
-		}
-		rpio.Pin(solarPumpPWMPin).DutyCycle(uint32(s.setting), 100)
-	}
-	startSolarPump() // In case the pump is stopped.
-}
-
-// Decrease slows the pump by 1%, or stops it once it is at the minimum speed.
-// It does nothing during the start-up period.
-func (s *SolarPumpControl) Decrease() {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	if s.setting == 0 || time.Since(s.startTime) < time.Duration(s.startSecs)*time.Second {
-		return
-	}
-	p := rpio.Pin(solarPumpPWMPin)
-	if s.setting > s.minSpeed {
-		s.setting--
-		p.DutyCycle(uint32(s.setting), 100)
+	if speed > 0 {
 		startSolarPump()
 	} else {
-		s.setting = 0
-		p.DutyCycle(0, 100)
 		stopSolarPump()
 	}
+	s.speed = speed
 }
 
 // Speed returns the pump duty cycle in percent; 0 means stopped.
 func (s *SolarPumpControl) Speed() uint8 {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	return s.setting
+	return s.speed
+}
+
+// SetState records the controller state and the reason for it, for the status page.
+func (s *SolarPumpControl) SetState(state, reason string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.state, s.reason = state, reason
+}
+
+// State returns the controller state and the reason for it.
+func (s *SolarPumpControl) State() (state, reason string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.state, s.reason
 }
 
 func startSolarPump() {
