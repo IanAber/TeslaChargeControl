@@ -140,8 +140,6 @@ type statusMessage struct {
 		IBattAvg         float32 `json:"iBattAvg"`
 		SOC              float32 `json:"soc"`
 		Power            float32 `json:"power"` // kW
-		VBattDeltaMin    float32 `json:"vBattDeltaMin"`
-		VBattDeltaMax    float32 `json:"vBattDeltaMax"`
 		GeneratorRunning bool    `json:"generatorRunning"`
 	} `json:"inverter"`
 
@@ -239,8 +237,6 @@ func buildStatus() *statusMessage {
 	inv.IBattAvg = iValues.GetAvgAmps()
 	inv.SOC = iValues.GetSOC()
 	inv.Power = iValues.GetPower()
-	inv.VBattDeltaMin = iValues.GetVBattDeltaMin()
-	inv.VBattDeltaMax = iValues.GetVBattDeltaMax()
 
 	iValues.mu.Lock()
 	inv.GeneratorRunning = iValues.AutoGn

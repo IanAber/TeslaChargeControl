@@ -29,27 +29,26 @@ import (
 // Version 2 makes parameters editable via the WEB interface
 
 var (
-	address               string
-	baudrate              int
-	databits              int
-	stopbits              int
-	parity                string
-	verbose               bool
-	apiPort               uint
-	databaseServer        string
-	databasePort          string
-	databaseName          string
-	databaseLogin         string
-	databasePassword      string
-	ChargingConstantsFile string
-	masterAddress         uint
-	port                  serial.Port
-	TeslaParameters       Params.Params
-	solarPump             *SolarPumpControl
-	iValues               InverterValues
-	slaves                []twcSlave.Slave
-	pDB                   *sql.DB
-	SolarProduction       struct {
+	address          string
+	baudrate         int
+	databits         int
+	stopbits         int
+	parity           string
+	verbose          bool
+	apiPort          uint
+	databaseServer   string
+	databasePort     string
+	databaseName     string
+	databaseLogin    string
+	databasePassword string
+	masterAddress    uint
+	port             serial.Port
+	TeslaParameters  Params.Params
+	solarPump        *SolarPumpControl
+	iValues          InverterValues
+	slaves           []twcSlave.Slave
+	pDB              *sql.DB
+	SolarProduction  struct {
 		power  float32
 		logged time.Time
 	}
@@ -282,7 +281,6 @@ func init() {
 	flag.StringVar(&databasePassword, "dbPassword", "logger", "Database user password")
 	flag.StringVar(&databasePort, "dbPort", "3306", "Database port")
 	flag.BoolVar(&verbose, "verbose", false, "Enable verbose mode to trace information to STDOUT.")
-	flag.StringVar(&ChargingConstantsFile, "constantsFile", "/var/www/html/params/charge_params.json", "Path of the file in which the charging constants are stored")
 
 	flag.StringVar(&inverterIPs, "inverters", "192.168.10.201,192.168.10.202", "Comma separated list of EG4 inverter IP addresses (Modbus TCP port 502, unit 1). The first is XP-1, the second XP-2, etc.")
 	flag.IntVar(&every, "every", 10, "poll interval")
@@ -301,12 +299,6 @@ func init() {
 	// Initialise the current values
 	TeslaParameters.Reset()
 	solarPump = NewSolarPumpControl()
-	// Set up the quintic function to control charging
-	err = iValues.LoadFunctionConstants(ChargingConstantsFile)
-	if err != nil {
-		log.Fatal(err)
-	}
-
 	log.Println("Verbose = ", verbose)
 
 	// Set up the API WEBSite

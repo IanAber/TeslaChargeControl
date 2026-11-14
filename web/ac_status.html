@@ -64,7 +64,6 @@
     <span class="status" id="status" role="status" aria-live="polite"></span>
     <nav aria-label="Other pages">
       <a href="eg4.html">EG4 inverters</a>
-      <a href="ChargeParams">Charge parameters</a>
       <a href="/logging">Logging</a>
     </nav>
   </header>
@@ -317,8 +316,6 @@
     big("voltBig", fmt(inv.vBatt, 2, "V"), "setpoint " + fmt(inv.vSetpoint, 2, "V"));
     kv("voltKV", [
       ["Setpoint − battery", fmt(inv.vSetpoint - inv.vBatt, 2, "V")],
-      ["Lowest difference", fmt(inv.vBattDeltaMin, 2, "V")],
-      ["Highest difference", fmt(inv.vBattDeltaMax, 2, "V")],
     ]);
 
     // Temperatures

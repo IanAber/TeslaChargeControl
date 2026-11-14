@@ -1,7 +1,6 @@
 package main
 
 import (
-	"SystemController/quinticFunction"
 	"strconv"
 	"sync"
 )
@@ -46,11 +45,6 @@ type InverterValues struct {
 	FeedSelfC      bool
 	Esave          bool
 
-	vBattMin   float32
-	vBattMax   float32
-	vBattDelta float32
-	qf         quinticFunction.QuinticFunction
-
 	iBattValues       [60]float32
 	iBattValuePointer int
 
@@ -68,10 +62,6 @@ type InverterValues struct {
 	mu            sync.Mutex
 
 	Log bool
-}
-
-func (i *InverterValues) LoadFunctionConstants(filename string) error {
-	return i.qf.LoadConstants(filename)
 }
 
 // GetPower returns the total inverter power
@@ -258,50 +248,9 @@ func (i *InverterValues) SetSOC(soc float32) {
 	i.soc = soc
 }
 
-func (i *InverterValues) GetQuinticFunction() quinticFunction.QuinticFunction {
-	return i.qf
-}
-
-// GetChargeLevel */
-// determine if we can raise or should lower consumption to adjust the available charge current
-// Return -1 if we need more power to charge
-// Return 0 if we are inside the band of acceptable Delta V
-// Return +1 if we can take more power for something else
-//
-//	func (i *InverterValues) GetChargeLevel() int {
-//		i.vBattMax, i.vBattMin = i.qf.Eval(i.soc)
-//		i.vBattDelta = i.vsetpoint - i.volts
-//		switch {
-//		case (i.frequency > 60.5) && (i.amps < 0):
-//			if i.Log {
-//				log.Printf("(i.frequency(%f) > 60.5Hz) && (i.amps(%f) < 0) - Raise consumption\n", i.frequency, i.amps)
-//			}
-//			return 1 // Inverters are throttled and battery is charging
-//		case (i.soc > 98 && i.amps < 100):
-//			if i.Log {
-//				log.Printf("i.soc > 98%%(%f%%) && i.amps < 100A(%fA) discharge. Raise consumption\n", i.soc, i.amps)
-//			}
-//			return 1
-//		case (i.frequency <= 60.1) && (i.amps > 0):
-//			if i.Log {
-//				log.Printf("(i.frequency(%f) < 59.5Hz) && (i.amps(%f) > 0) - Lower consumption\n", i.frequency, i.amps)
-//			}
-//			return -1 // Inverters are all running and battery is discharging
-//		case (i.vBattDelta > i.vBattMax) && (i.frequency < 61) && (i.amps > -60):
-//			if i.Log {
-//				log.Printf("(i.vBattDelta(%f) > i.vBattMax(%f)) && (i.frequency(%f) < 60.25) - Lower consumption\n", i.vBattDelta, i.vBattMax, i.frequency)
-//			}
-//			return -1 // Battery voltage is below the acceptable setpoint and the inverters
-//			// are not throttled and charge current is less than 60Amps
-//		case (i.vBattDelta < i.vBattMin) || (i.amps < -80):
-//			if i.Log {
-//				log.Printf("(i.vBattDelta(%f) < i.vBattMin(%f)) || i.amps(%f) < -80 - Raise consumption\n", i.vBattDelta, i.vBattMin, i.amps)
-//			}
-//			return 1 // Battery voltage is above the acceptable setpoint, or we are charging at more than 80 amps
-//		default:
-//			return 0
-//		}
-//	}
+// GetChargeLevel says whether the Tesla chargers may take more power (+1),
+// should take less (-1) or should stay as they are (0), from the battery SOC
+// and the BMS battery current.
 func (i *InverterValues) GetChargeLevel() int {
 	i.mu.Lock()
 	defer i.mu.Unlock()
@@ -327,14 +276,6 @@ func (i *InverterValues) GetChargeLevel() int {
 			}
 		}
 	}
-}
-
-func (i *InverterValues) GetVBattDeltaMax() float32 {
-	return i.vBattMax
-}
-
-func (i *InverterValues) GetVBattDeltaMin() float32 {
-	return i.vBattMin
 }
 
 func (i *InverterValues) SetSetPoint(setPoint float32) {
