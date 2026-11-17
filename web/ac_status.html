@@ -71,14 +71,20 @@
   <div class="tiles">
     <a class="card" href="eg4.html" id="eg4Card">
       <div class="card-head"><h2>EG4 inverters</h2><span class="more">Details →</span></div>
-      <svg id="eg4flow" viewBox="0 0 200 200" role="img" aria-label="EG4 power flow: solar, battery and load">
-        <path id="eg4wSolar" class="wire" d="M100 50 V82"/>
+      <svg id="eg4flow" viewBox="0 0 200 200" role="img" aria-label="EG4 power flow: solar, AC coupled, battery and load">
+        <path id="eg4wSolar" class="wire" d="M47 50 V66 H90 V82"/>
+        <path id="eg4wAC" class="wire" d="M153 50 V66 H110 V82"/>
         <path id="eg4wBatt" class="wire" d="M75 100 H47 V138"/>
         <path id="eg4wLoad" class="wire" d="M125 100 H153 V138"/>
         <g id="eg4nSolar">
-          <rect class="box" x="50" y="4" width="100" height="46" rx="6"/>
-          <text class="name" x="100" y="19">Solar</text>
-          <text class="val" id="eg4Solar" x="100" y="40">–</text>
+          <rect class="box" x="1" y="4" width="92" height="46" rx="6"/>
+          <text class="name" x="47" y="19">Solar</text>
+          <text class="val" id="eg4Solar" x="47" y="40">–</text>
+        </g>
+        <g id="eg4nAC">
+          <rect class="box" x="107" y="4" width="92" height="46" rx="6"/>
+          <text class="name" x="153" y="19">AC coupled</text>
+          <text class="val" id="eg4AC" x="153" y="40">–</text>
         </g>
         <g>
           <rect class="box" x="75" y="84" width="50" height="32" rx="6"/>
@@ -257,9 +263,10 @@
   function showEG4(g) {
     const old = staleNote($("eg4Card"), $("eg4Stale"), g && g.time, "EG4 reading");
     if (!g) return;
-    const solar = (g.pv || 0) + (g.acCouple || 0), load = g.load || 0, batt = g.battery || 0;
+    const solar = g.pv || 0, ac = g.acCouple || 0, load = g.load || 0, batt = g.battery || 0;
     const soc = Math.max(0, Math.min(100, g.soc || 0));
     $("eg4Solar").textContent = fmtW(solar);
+    $("eg4AC").textContent = fmtW(ac);
     $("eg4Load").textContent = fmtW(load);
     $("eg4Soc").textContent = Math.round(soc) + "%";
     $("eg4Batt").textContent = Math.abs(batt) <= 20 ? "Idle" : (batt > 0 ? "Charging " : "Discharging ") + (Math.abs(batt) / 1000).toFixed(1) + " kW";
@@ -267,9 +274,11 @@
     $("eg4SocFill").setAttribute("y", 195 - 54 * soc / 100);
     $("eg4Note").textContent = g.notAnswering && g.notAnswering.length ? g.notAnswering.join(", ") + " not answering" : "";
     $("eg4nSolar").classList.toggle("active", !old && solar > 20);
+    $("eg4nAC").classList.toggle("active", !old && ac > 20);
     $("eg4nLoad").classList.toggle("active", !old && load > 20);
     $("eg4nBatt").classList.toggle("active", !old && Math.abs(batt) > 20);
     wire("eg4wSolar", old ? 0 : solar);
+    wire("eg4wAC", old ? 0 : ac);
     wire("eg4wLoad", old ? 0 : load);
     wire("eg4wBatt", old ? 0 : batt, batt < 0);
   }
