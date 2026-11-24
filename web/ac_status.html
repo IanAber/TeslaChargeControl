@@ -14,6 +14,8 @@
 .tiles { display: grid; grid-template-columns: repeat(auto-fill, minmax(290px, 1fr)); gap: 16px; }
 .tiles > .card { margin: 0; }
 .wide { grid-column: span 2; }
+.card-head .links { display: inline-flex; gap: 12px; }
+.card-head a.more:hover, .card-head a.more:focus-visible { color: var(--flow); }
 @media (max-width: 640px) { .wide { grid-column: auto; } }
 .big { font-size: 28px; font-weight: 600; font-variant-numeric: tabular-nums; margin: 4px 0 2px; }
 .big small { font-size: 14px; font-weight: 400; color: var(--text-secondary); }
@@ -147,13 +149,14 @@
       <div class="stale-note"></div>
     </a>
 
-    <a class="card" href="trackers/solar_temps.html" data-temps>
-      <div class="card-head"><h2>Solar hot water</h2><span class="more">History →</span></div>
+    <div class="card" data-temps>
+      <div class="card-head"><h2><a href="trackers/solar_temps.html">Solar hot water</a></h2>
+        <span class="links"><a class="more" href="solar_tuning.html">Tuning</a><a class="more" href="trackers/solar_temps.html">History →</a></span></div>
       <div class="kv" id="pumpKV"></div>
       <p class="note" id="pumpWhy" style="margin-top:4px"></p>
       <div class="rows" id="solarTempRows"></div>
       <div class="stale-note"></div>
-    </a>
+    </div>
 
     <a class="card" href="trackers/loop_temps.html" data-temps>
       <div class="card-head"><h2>Chiller loop</h2><span class="more">History →</span></div>
