@@ -1,0 +1,293 @@
+<!doctype html>
+<!--
+	solar_tuning.html - tune the solar pump controller while it runs
+	author: Ian Abercrombie
+	Settings come from and go to /solarPump/config. Apply changes them in the
+	running controller; Apply and save also writes them to the config file.
+	Live pump readings arrive from /realtime/statusEvents.
+-->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Solar Pump Tuning</title>
+<link rel="stylesheet" href="scripts/sc.css">
+<style>
+main { max-width: 1100px; }
+.live { display: grid; grid-template-columns: repeat(auto-fill, minmax(120px, 1fr)); gap: 10px 16px; margin-top: 8px; }
+.live div span { display: block; color: var(--text-secondary); font-size: 12px; }
+.live div b { font-size: 18px; font-weight: 600; font-variant-numeric: tabular-nums; }
+.why { color: var(--text-secondary); font-size: 13px; margin: 6px 0 0; }
+.stale .live b { color: var(--text-muted); }
+
+.groups { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 16px; }
+.groups > .card { margin: 0; }
+.field { display: grid; grid-template-columns: 1fr auto; gap: 2px 12px; align-items: center; padding: 8px 0; border-top: 1px solid var(--grid); }
+.field:first-of-type { border-top: 0; }
+.field label { font-weight: 600; font-size: 13px; }
+.field .hint { grid-column: 1 / -1; color: var(--text-secondary); font-size: 12px; }
+.field .ref { grid-column: 1 / -1; color: var(--text-muted); font-size: 11px; font-variant-numeric: tabular-nums; }
+.inp { display: inline-flex; align-items: center; gap: 6px; }
+.inp input {
+  width: 88px; font: inherit; font-size: 14px; text-align: right; font-variant-numeric: tabular-nums;
+  color: var(--text-primary); background: var(--page); border: 1px solid var(--border); border-radius: 6px; padding: 4px 6px;
+}
+.inp input:focus-visible { outline: 2px solid var(--flow); outline-offset: 1px; }
+.inp .unit { color: var(--text-secondary); font-size: 12px; min-width: 34px; }
+.field.edited .inp input { border-color: var(--warning); }
+.field.edited label::after { content: " • changed"; color: var(--serious); font-weight: 400; font-size: 11px; }
+
+.actions { position: sticky; bottom: 0; display: flex; flex-wrap: wrap; align-items: center; gap: 8px 10px;
+  background: var(--page); border-top: 1px solid var(--border); padding: 12px 0; margin-top: 16px; }
+.actions button {
+  font: inherit; font-size: 13px; cursor: pointer; border-radius: 8px; padding: 6px 12px;
+  color: var(--text-primary); background: var(--surface-1); border: 1px solid var(--border);
+}
+.actions button.primary { background: var(--flow); border-color: var(--flow); color: #fff; font-weight: 600; }
+.actions button:disabled { opacity: 0.5; cursor: default; }
+.actions .msg { font-size: 13px; color: var(--text-secondary); }
+.actions .msg.err { color: var(--critical); white-space: pre-line; }
+.actions .spacer { flex: 1; }
+.file { color: var(--text-muted); font-size: 12px; margin: 0 0 12px; }
+</style>
+</head>
+<body>
+<main>
+  <header>
+    <h1>Solar pump tuning</h1>
+    <span class="status" id="status" role="status" aria-live="polite"></span>
+    <nav aria-label="Other pages">
+      <a href="ac_status.html">Status page</a>
+      <a href="trackers/solar_temps.html">Solar hot water history</a>
+      <a href="/logging">Logging</a>
+    </nav>
+  </header>
+
+  <section class="card" id="liveCard" aria-label="Pump now">
+    <div class="card-head"><h2>Pump now</h2></div>
+    <div class="live">
+      <div><span>State</span><b id="lvState">–</b></div>
+      <div><span>Speed</span><b id="lvSpeed">–</b></div>
+      <div><span>Collector</span><b id="lvColl">–</b></div>
+      <div><span>Inlet</span><b id="lvIn">–</b></div>
+      <div><span>Outlet</span><b id="lvOut">–</b></div>
+      <div><span>Rise</span><b id="lvRise">–</b></div>
+      <div><span>Tank bottom</span><b id="lvTankB">–</b></div>
+      <div><span>Tank hottest</span><b id="lvTankH">–</b></div>
+    </div>
+    <p class="why" id="lvWhy"></p>
+  </section>
+
+  <p class="file" id="fileNote"></p>
+
+  <form id="form" novalidate>
+    <div class="groups" id="groups"></div>
+    <div class="actions">
+      <button type="button" class="primary" id="btnSave">Apply and save</button>
+      <button type="button" id="btnApply">Apply only</button>
+      <button type="button" id="btnUndo">Undo edits</button>
+      <button type="button" id="btnSaved">Load saved</button>
+      <button type="button" id="btnDefaults">Load defaults</button>
+      <span class="spacer"></span>
+      <span class="msg" id="msg" role="status" aria-live="polite"></span>
+    </div>
+  </form>
+</main>
+
+<script src="scripts/sc.js"></script>
+<script>
+(function () {
+  "use strict";
+  const { $, h, fmt, isNum } = SC;
+
+  // scale converts the stored unit (seconds for times) to the one shown.
+  const GROUPS = [
+    { title: "Starting and stopping", fields: [
+      { key: "startDelta", label: "Start difference", unit: "°C", step: 0.5, min: 0.5,
+        hint: "Collector must be this much hotter than the tank bottom to start." },
+      { key: "minOffSec", label: "Minimum rest", unit: "min", scale: 60, step: 0.5, min: 0,
+        hint: "Shortest time off before starting again." },
+      { key: "primeTimeSec", label: "Priming time", unit: "s", step: 1, min: 0,
+        hint: "Time at 100% to lift water to the roof and fill the collectors." },
+      { key: "noRise", label: "No-rise threshold", unit: "°C", step: 0.1, min: 0,
+        hint: "A rise across the collectors below this counts as nothing collected." },
+      { key: "stopAfterSec", label: "Stop delay", unit: "min", scale: 60, step: 0.5, min: 0,
+        hint: "The rise must stay below the threshold this long before stopping." },
+      { key: "minOnSec", label: "Minimum run", unit: "min", scale: 60, step: 0.5, min: 0,
+        hint: "Shortest run once started." },
+    ]},
+    { title: "Speed control", fields: [
+      { key: "targetRise", label: "Target rise", unit: "°C", step: 0.5, min: 0.1,
+        hint: "Wanted outlet minus inlet. More rise speeds the pump up, less slows it down." },
+      { key: "minSpeed", label: "Minimum speed", unit: "%", step: 1, min: 0, max: 100,
+        hint: "Slowest speed that still lifts water to the roof." },
+      { key: "kp", label: "Proportional gain", unit: "%/°C", step: 0.5, min: 0,
+        hint: "Speed change for each degree of rise error. Higher reacts faster but may hunt." },
+      { key: "tiSec", label: "Integral time", unit: "min", scale: 60, step: 0.5, min: 0.1,
+        hint: "Shorter removes a steady error faster but may overshoot." },
+      { key: "maxStep", label: "Largest step", unit: "%", step: 1, min: 1, max: 100,
+        hint: "Largest speed change per update (about every 5 s)." },
+    ]},
+    { title: "Limits and safety", fields: [
+      { key: "tankMax", label: "Tank full", unit: "°C", step: 1,
+        hint: "Stop when the hottest tank sensor reaches this." },
+      { key: "tankResume", label: "Tank resume", unit: "°C", step: 1,
+        hint: "Collect again once the hottest tank sensor is below this." },
+      { key: "collectorMax", label: "Collector too hot", unit: "°C", step: 1,
+        hint: "Don't refill hot, dry collectors above this…" },
+      { key: "collectorOK", label: "Collector refill", unit: "°C", step: 1,
+        hint: "…until they have cooled below this." },
+      { key: "maxAgeSec", label: "Maximum reading age", unit: "s", step: 5, min: 1,
+        hint: "Stop if the temperatures are older than this." },
+    ]},
+  ];
+  const FIELDS = GROUPS.flatMap((g) => g.fields);
+
+  let data = null; // last reply from /solarPump/config
+
+  const show = (f, v) => isNum(v) ? String(+(v / (f.scale || 1)).toFixed(3)) : "";
+  const shown = (f, cfg) => cfg ? show(f, cfg[f.key]) + " " + f.unit : "–";
+
+  // ---------- form ----------
+  for (const g of GROUPS) {
+    const card = h("section", { class: "card", "aria-label": g.title });
+    card.appendChild(h("h2", {}, g.title));
+    for (const f of g.fields) {
+      const id = "f_" + f.key;
+      const row = h("div", { class: "field", id: "row_" + f.key });
+      row.appendChild(h("label", { for: id }, f.label));
+      const inp = h("span", { class: "inp" });
+      const attrs = { id, type: "number", inputmode: "decimal", step: f.step, "aria-describedby": "hint_" + f.key };
+      if (f.min != null) attrs.min = f.min;
+      if (f.max != null) attrs.max = f.max;
+      const input = h("input", attrs);
+      input.addEventListener("input", markEdited);
+      inp.append(input, h("span", { class: "unit" }, f.unit));
+      row.append(inp, h("span", { class: "hint", id: "hint_" + f.key }, f.hint), h("span", { class: "ref", id: "ref_" + f.key }));
+      card.appendChild(row);
+    }
+    $("groups").appendChild(card);
+  }
+
+  function fill(cfg) {
+    for (const f of FIELDS) $("f_" + f.key).value = show(f, cfg[f.key]);
+    markEdited();
+  }
+
+  // The form as settings in stored units; null and a message if a box is empty.
+  function read() {
+    const cfg = {};
+    for (const f of FIELDS) {
+      const v = $("f_" + f.key).value.trim();
+      if (v === "" || !isNum(v)) return { error: f.label + " needs a number." };
+      cfg[f.key] = Number(v) * (f.scale || 1);
+    }
+    return { cfg };
+  }
+
+  // Highlights boxes that differ from the settings in use.
+  function markEdited() {
+    if (!data) return;
+    let any = false;
+    for (const f of FIELDS) {
+      const edited = $("f_" + f.key).value.trim() !== show(f, data.current[f.key]);
+      $("row_" + f.key).classList.toggle("edited", edited);
+      any = any || edited;
+    }
+    $("btnUndo").disabled = !any;
+  }
+
+  function showRefs() {
+    for (const f of FIELDS) {
+      const parts = ["In use " + shown(f, data.current)];
+      if (data.saved && data.saved[f.key] !== data.current[f.key]) parts.push("saved " + shown(f, data.saved));
+      if (data.defaults[f.key] !== data.current[f.key]) parts.push("default " + shown(f, data.defaults));
+      $("ref_" + f.key).textContent = parts.join(" · ");
+    }
+    const unsaved = !data.saved || FIELDS.some((f) => data.saved[f.key] !== data.current[f.key]);
+    let note = "Config file " + data.file + (data.saved ? "" : " (not written yet)");
+    if (data.fileError) note += " — could not be read: " + data.fileError;
+    else if (unsaved) note += " — the settings in use have not been saved.";
+    $("fileNote").textContent = note;
+    $("btnSaved").disabled = !data.saved;
+  }
+
+  function message(text, err) {
+    const m = $("msg");
+    m.textContent = text;
+    m.classList.toggle("err", !!err);
+  }
+
+  function busy(on) {
+    for (const id of ["btnSave", "btnApply", "btnSaved", "btnDefaults"]) $(id).disabled = on;
+    if (!on && data) showRefs();
+  }
+
+  function load() {
+    return fetch("/solarPump/config", { cache: "no-store" })
+      .then((r) => r.ok ? r.json() : r.text().then((t) => Promise.reject(t || r.status)))
+      .then((d) => { data = d; showRefs(); fill(d.current); })
+      .catch((e) => message("Could not load the settings: " + e, true));
+  }
+
+  function send(save) {
+    const { cfg, error } = read();
+    if (error) { message(error, true); return; }
+    if (save && !confirm("Apply these settings and save them to " + data.file + "?")) return;
+    busy(true);
+    message(save ? "Saving…" : "Applying…");
+    fetch("/solarPump/config" + (save ? "?save=true" : ""), {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(cfg),
+    })
+      .then((r) => r.ok ? r.json() : r.text().then((t) => Promise.reject(t.trim() || "error " + r.status)))
+      .then((d) => {
+        data = d; showRefs(); fill(d.current);
+        message(d.message + " at " + SC.clockS(Date.now()) + (save ? "" : " — not saved, lost on restart"));
+      })
+      // An apply that worked but failed to save still changed the settings in use.
+      .catch((e) => { message(String(e), true); load(); })
+      .finally(() => busy(false));
+  }
+
+  $("btnSave").addEventListener("click", () => send(true));
+  $("btnApply").addEventListener("click", () => send(false));
+  $("btnUndo").addEventListener("click", () => { if (data) { fill(data.current); message(""); } });
+  $("btnSaved").addEventListener("click", () => { if (data && data.saved) { fill(data.saved); message("Saved settings loaded into the form — Apply to use them."); } });
+  $("btnDefaults").addEventListener("click", () => { if (data) { fill(data.defaults); message("Defaults loaded into the form — Apply to use them."); } });
+  $("form").addEventListener("submit", (e) => { e.preventDefault(); send(false); });
+  window.addEventListener("beforeunload", (e) => {
+    if (document.querySelector(".field.edited")) { e.preventDefault(); e.returnValue = ""; }
+  });
+
+  // ---------- live readings ----------
+  const STALE_MS = 60000;
+  function showLive(m) {
+    const state = m.solarPumpState || (m.solarPump > 0 ? "Running" : "Off");
+    $("lvState").textContent = state;
+    $("lvSpeed").textContent = state === "Off" ? "Stopped" : fmt(m.solarPump, 0, "%");
+    $("lvWhy").textContent = m.solarPumpReason || "";
+    const t = m.temps;
+    $("liveCard").classList.toggle("stale", !t || !isNum(t.time) || Date.now() - t.time > STALE_MS);
+    if (!t) return;
+    $("lvColl").textContent = fmt(t.solarCollector, 1, "°C");
+    $("lvIn").textContent = fmt(t.solarInlet, 1, "°C");
+    $("lvOut").textContent = fmt(t.solarOutlet, 1, "°C");
+    $("lvRise").textContent = fmt(t.solarOutlet - t.solarInlet, 1, "°C");
+    $("lvTankB").textContent = fmt(t.hotTankBottom, 1, "°C");
+    $("lvTankH").textContent = fmt(Math.max(t.hotTankTop, t.hotTankMiddle, t.hotTankBottom), 1, "°C");
+  }
+
+  SC.stream({
+    url: "/realtime/statusEvents",
+    pollUrl: "/realtime/getStatus",
+    onState: (kind, text) => SC.setStatus($("status"), kind, text),
+    onMessage: showLive,
+  });
+
+  load();
+})();
+</script>
+</body>
+</html>

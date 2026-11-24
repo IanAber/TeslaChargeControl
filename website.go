@@ -37,6 +37,9 @@ func setUpWebSite() {
 	router.HandleFunc("/realtime/statusEvents", statusEvents).Methods("GET")
 	router.HandleFunc("/realtime/getStatus", getStatus).Methods("GET")
 
+	router.HandleFunc("/solarPump/config", getSolarConfig).Methods("GET")
+	router.HandleFunc("/solarPump/config", postSolarConfig).Methods("POST")
+
 	router.HandleFunc("/logging", showLoggingSelection).Methods("GET")
 	router.HandleFunc("/enableLogging/iValues", enableIvalueLogging).Methods("GET")
 	router.HandleFunc("/disableLogging/iValues", disableIvalueLogging).Methods("GET")
@@ -279,7 +282,7 @@ func showLoggingSelection(w http.ResponseWriter, _ *http.Request) {
 			log.Println(err)
 		}
 	}
-	if _, err := fmt.Fprint(w, `</ul></div><div><a href="/ac_status.html">Status Page</a></div></body></html>`); err != nil {
+	if _, err := fmt.Fprint(w, `</ul></div><div><a href="/ac_status.html">Status Page</a> | <a href="/solar_tuning.html">Solar Pump Tuning</a></div></body></html>`); err != nil {
 		log.Println(err)
 	}
 }

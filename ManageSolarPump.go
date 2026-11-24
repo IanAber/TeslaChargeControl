@@ -40,12 +40,19 @@ func init() {
 
 // ManageSolarPump runs the solar pump controller (package solarctl) each time
 // new temperatures arrive, about every 5 seconds, and drives the pump.
+// Settings changed on the solar tuning page are applied before the next step.
 func ManageSolarPump() {
-	c := solarctl.New(solarConfig)
-	log.Printf("Solar pump controller: %+v", solarConfig)
+	cfg := currentSolarConfig()
+	takeSolarConfigChange() // already applied by New
+	c := solarctl.New(cfg)
+	log.Printf("Solar pump controller: %+v", cfg)
 	lastState := solarctl.State(-1)
 
 	for temps := range tempUpdate {
+		if cfg, changed := takeSolarConfigChange(); changed {
+			c.SetConfig(cfg)
+			log.Printf("Solar pump settings changed: %+v", cfg)
+		}
 		in := solarctl.Inputs{
 			Time:       time.Now(),
 			Updated:    temps.updated,
