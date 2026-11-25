@@ -8,7 +8,6 @@ import (
 	"context"
 	_ "crypto/aes"
 	"database/sql"
-	"encoding/json"
 	"errors"
 	"flag"
 	"fmt"
@@ -593,7 +592,7 @@ func Read12000XP() {
 	defer stop()
 
 	// Send the output to Stdout
-	enc := json.NewEncoder(os.Stdout)
+	//	enc := json.NewEncoder(os.Stdout)
 	tick := time.NewTicker(time.Duration(every) * time.Second)
 	defer tick.Stop()
 	for {
@@ -606,7 +605,7 @@ func Read12000XP() {
 			for name, e := range sr.Errors {
 				log.Printf("%s: %v", name, e)
 			}
-			_ = enc.Encode(sr.Summary())
+			//			_ = enc.Encode(sr.Summary())
 			setLatestEG4(sr)
 			if pDB == nil {
 				if pDB, err = connectToDatabase(); err != nil {

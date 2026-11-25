@@ -155,14 +155,18 @@ func getEG4History(w http.ResponseWriter, r *http.Request) {
 		var b int64
 		s := &eg4Sample{Units: map[string]eg4UnitSample{}}
 		if err := rows.Scan(&b, &s.T, &s.PV, &s.AC, &s.Load, &s.SOC, &s.V, &s.A); err != nil {
-			rows.Close()
+			if errClose := rows.Close(); errClose != nil {
+				log.Println("getEG4History() - ", errClose)
+			}
 			eg4HistoryError(w, err)
 			return
 		}
 		samples = append(samples, s)
 		byBucket[b] = s
 	}
-	rows.Close()
+	if errClose := rows.Close(); errClose != nil {
+		log.Println("getEG4History() - ", errClose)
+	}
 	if err := rows.Err(); err != nil {
 		eg4HistoryError(w, err)
 		return
@@ -185,7 +189,9 @@ func getEG4History(w http.ResponseWriter, r *http.Request) {
 		var name string
 		var u eg4UnitSample
 		if err := rows.Scan(&b, &name, &u.PV, &u.AC, &u.Load, &u.A); err != nil {
-			rows.Close()
+			if errClose := rows.Close(); errClose != nil {
+				log.Println("getEG4History() - ", errClose)
+			}
 			eg4HistoryError(w, err)
 			return
 		}
@@ -193,7 +199,9 @@ func getEG4History(w http.ResponseWriter, r *http.Request) {
 			s.Units[name] = u
 		}
 	}
-	rows.Close()
+	if errClose := rows.Close(); errClose != nil {
+		log.Println("getEG4History() - ", errClose)
+	}
 	if err := rows.Err(); err != nil {
 		eg4HistoryError(w, err)
 		return
